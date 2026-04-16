@@ -1,6 +1,7 @@
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Entities;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 import org.jsoup.select.Elements;
@@ -12,34 +13,93 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 从 HTML 中抽取所有 table (含嵌套), 转成 Markdown 字符串.
+ * 从 HTML 中抽取表格转成 Markdown. 合并单元格采用 Z 策略 (复制填满, 适合 RAG).
  *
- * 与 HtmlTableExtractor 的差异 (Z 策略, 面向 RAG 场景):
- *  - 合并单元格 (colspan/rowspan) 被覆盖的所有位置都**复制填满锚点值**
- *    从而每一行都自带完整列信息, 便于 embedding 检索和行级 chunking
- *  - 其他行为保持一致:
- *      * List<String>: 一张表一个 Markdown 字符串
- *      * 嵌套 <table> 独立成项, 父单元格文本不重复其内容
- *      * <br> 在单元格内转为 <br> (Markdown 不支持真换行)
- *      * <thead> 多行头按列纵向合并 (<br> 拼接, 去重)
- *      * | 和 \ 转义
+ * 主要方法:
+ *  - extract(html): 所有 <table> (含嵌套) 各转一份 Markdown, List<String>
+ *  - segment(html): 线性切块 → Segmented {segments, flags}
+ *      segments: 顶层表的 Markdown 与非表格 HTML 段交替出现
+ *      flags:    0 = 非表格正文(保留 HTML), 1 = 表格 Markdown
  *
- * 使用场景: 喂给 embedding 模型做向量检索 (RAG) 时, 每行能独立被召回.
+ * segment() 的行为:
+ *  - 只切顶层 <table>; 嵌套表不单独成段, 其文本内容扁平化进父表单元格
+ *  - 非表格段保留原 HTML 标签
+ *  - 空白段丢弃
+ *
+ * Z 策略特点: 每行自带完整列信息 (合并单元格复制值), 便于按行 chunk 和 embedding 检索.
  */
 public class HtmlTableExtractorFilled {
+
+    public static class Segmented {
+        public final String[] segments;
+        public final int[] flags;
+        public Segmented(String[] segments, int[] flags) {
+            this.segments = segments;
+            this.flags = flags;
+        }
+    }
 
     public static List<String> extract(String html) {
         Document doc = Jsoup.parse(html);
         Elements tables = doc.select("table");
         List<String> result = new ArrayList<>();
         for (Element table : tables) {
-            String md = parseTableToMarkdown(table);
+            String md = parseTableToMarkdown(table, true);
             if (md != null && !md.isEmpty()) result.add(md);
         }
         return result;
     }
 
-    private static String parseTableToMarkdown(Element table) {
+    public static Segmented segment(String html) {
+        Document doc = Jsoup.parse(html);
+        doc.outputSettings().prettyPrint(false).escapeMode(Entities.EscapeMode.xhtml);
+
+        List<Element> topTables = new ArrayList<>();
+        for (Element table : doc.select("table")) {
+            if (table.parents().select("table").isEmpty()) topTables.add(table);
+        }
+
+        List<String> tableOutputs = new ArrayList<>(topTables.size());
+        for (Element table : topTables) {
+            String md = parseTableToMarkdown(table, false);
+            tableOutputs.add(md == null ? "" : md);
+        }
+
+        final String PREFIX = "__HTBL_PH_";
+        final String SUFFIX = "__";
+        for (int i = 0; i < topTables.size(); i++) {
+            topTables.get(i).replaceWith(new TextNode(PREFIX + i + SUFFIX));
+        }
+
+        String body = doc.body() != null ? doc.body().html() : doc.html();
+
+        List<String> segments = new ArrayList<>();
+        List<Integer> flags = new ArrayList<>();
+        String remaining = body;
+        for (int i = 0; i < tableOutputs.size(); i++) {
+            String marker = PREFIX + i + SUFFIX;
+            int idx = remaining.indexOf(marker);
+            if (idx < 0) continue;
+            String before = remaining.substring(0, idx);
+            if (!before.trim().isEmpty()) {
+                segments.add(before);
+                flags.add(0);
+            }
+            segments.add(tableOutputs.get(i));
+            flags.add(1);
+            remaining = remaining.substring(idx + marker.length());
+        }
+        if (!remaining.trim().isEmpty()) {
+            segments.add(remaining);
+            flags.add(0);
+        }
+        String[] segArr = segments.toArray(new String[0]);
+        int[] flagArr = new int[flags.size()];
+        for (int i = 0; i < flags.size(); i++) flagArr[i] = flags.get(i);
+        return new Segmented(segArr, flagArr);
+    }
+
+    private static String parseTableToMarkdown(Element table, boolean skipNestedInCells) {
         List<Element> headerTrs = new ArrayList<>();
         List<Element> bodyTrs = new ArrayList<>();
         boolean hasThead = false;
@@ -68,7 +128,7 @@ public class HtmlTableExtractorFilled {
         List<Element> allTrs = new ArrayList<>();
         allTrs.addAll(headerTrs);
         allTrs.addAll(bodyTrs);
-        List<List<String>> matrix = expandMatrix(allTrs);
+        List<List<String>> matrix = expandMatrix(allTrs, skipNestedInCells);
 
         int headerCount = headerTrs.size();
         List<List<String>> headerRows = matrix.subList(0, headerCount);
@@ -77,11 +137,8 @@ public class HtmlTableExtractorFilled {
         return toMarkdown(headerRows, bodyRows);
     }
 
-    /**
-     * Z 策略: colspan / rowspan 覆盖的每个格都**复制**锚点值.
-     * 目的: 让每一行独立携带完整列信息 (适合 embedding 和行级 chunking).
-     */
-    private static List<List<String>> expandMatrix(List<Element> trs) {
+    /** Z 策略: 合并单元格的每个覆盖位置都**复制**锚点值 */
+    private static List<List<String>> expandMatrix(List<Element> trs, boolean skipNestedInCells) {
         List<List<String>> grid = new ArrayList<>();
         Map<Integer, Integer> rsRemain = new HashMap<>();
         Map<Integer, String>  rsValue  = new HashMap<>();
@@ -99,7 +156,7 @@ public class HtmlTableExtractorFilled {
                     Element cell = cells.get(ci++);
                     int colspan = parseSpan(cell.attr("colspan"));
                     int rowspan = parseSpan(cell.attr("rowspan"));
-                    String text = extractCellText(cell);
+                    String text = extractCellText(cell, skipNestedInCells);
                     for (int c = 0; c < colspan; c++) {
                         row.add(text);
                         if (rowspan > 1) {
@@ -140,7 +197,6 @@ public class HtmlTableExtractorFilled {
         for (List<String> r : bodyRows)   maxCols = Math.max(maxCols, r.size());
         if (maxCols == 0) return "";
 
-        // 多行 header 按列合并, 空串跳过, 重复去重 (Z 策略下合并单元格会自然出现同值重复)
         List<String> mergedHeader = new ArrayList<>();
         for (int c = 0; c < maxCols; c++) {
             List<String> parts = new ArrayList<>();
@@ -175,7 +231,7 @@ public class HtmlTableExtractorFilled {
         return out.trim();
     }
 
-    private static String extractCellText(Element cell) {
+    private static String extractCellText(Element cell, boolean skipNestedTables) {
         StringBuilder sb = new StringBuilder();
         cell.traverse(new NodeVisitor() {
             boolean skip = false;
@@ -187,6 +243,9 @@ public class HtmlTableExtractorFilled {
                     Element el = (Element) node;
                     String tag = el.tagName();
                     if ("table".equals(tag) && el != cell) {
+                        if (!skipNestedTables) {
+                            sb.append(' ').append(el.text()).append(' ');
+                        }
                         skip = true;
                         skipDepth = depth;
                         return;
@@ -226,21 +285,21 @@ public class HtmlTableExtractorFilled {
 
     public static void main(String[] args) {
         String html =
+            "<p>前言段落</p>" +
             "<table>" +
-            "  <thead>" +
-            "    <tr><th colspan=\"2\">姓名</th><th rowspan=\"2\">分数</th></tr>" +
-            "    <tr><th>姓</th><th>名</th></tr>" +
-            "  </thead>" +
-            "  <tbody>" +
-            "    <tr><td rowspan=\"2\">工程部</td><td>张三</td><td>90</td></tr>" +
-            "    <tr><td>李四</td><td>85<br>(补考)</td></tr>" +
-            "  </tbody>" +
-            "</table>";
-        List<String> tables = extract(html);
-        for (int i = 0; i < tables.size(); i++) {
-            System.out.println("=== Table #" + i + " ===");
-            System.out.println(tables.get(i));
-            System.out.println();
+            "<thead><tr><th colspan=\"2\">姓名</th><th rowspan=\"2\">分数</th></tr>" +
+            "<tr><th>姓</th><th>名</th></tr></thead>" +
+            "<tbody><tr><td rowspan=\"2\">工程部</td><td>张三</td><td>90</td></tr>" +
+            "<tr><td>李四</td><td>85</td></tr></tbody></table>" +
+            "<div>中间说明文字</div>" +
+            "<table><tr><td>X</td><td>Y</td></tr></table>" +
+            "<p>结尾</p>";
+
+        Segmented s = segment(html);
+        System.out.println("共 " + s.segments.length + " 段");
+        for (int i = 0; i < s.segments.length; i++) {
+            System.out.println("--- [" + s.flags[i] + "] ---");
+            System.out.println(s.segments[i]);
         }
     }
 }
