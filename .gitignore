@@ -1,0 +1,9 @@
+.claude/
+.omc/
+.DS_Store
+*.log
+*.class
+target/
+build/
+.idea/
+.vscode/
