@@ -47,9 +47,16 @@ public class HtmlTableSlicer {
         doc.outputSettings().prettyPrint(false).escapeMode(Entities.EscapeMode.xhtml);
 
         // 找顶层表: 其祖先里没有另一个 <table>
+        // 注意: Elements.select(...) 是"对集合里每个 root 向下做子树搜索",
+        // parents().select("table") 会把 body/html 当 root 递归，反而命中当前表本身,
+        // 导致所有表都被判成"嵌套"。这里显式遍历祖先判 tagName 才是对的。
         List<Element> topTables = new ArrayList<>();
         for (Element table : doc.select("table")) {
-            if (table.parents().select("table").isEmpty()) topTables.add(table);
+            boolean nested = false;
+            for (Element p : table.parents()) {
+                if ("table".equals(p.tagName())) { nested = true; break; }
+            }
+            if (!nested) topTables.add(table);
         }
 
         // 在替换前, 先把每张顶层表的字符串形态固定下来
