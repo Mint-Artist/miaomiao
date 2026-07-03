@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 import numpy as np
 
@@ -61,6 +62,12 @@ def split_by_br_semantic(
         chunks.append("\n".join(current))
 
     return chunks, blocks, distances, threshold
+
+
+def split_txt_by_br_semantic(txt_path, encoding="utf-8", **kwargs):
+    """Read a txt file and split its <br>-separated text."""
+    text = Path(txt_path).read_text(encoding=encoding)
+    return split_by_br_semantic(text, **kwargs)
 
 
 def print_boundaries(blocks, distances, threshold, preview_chars=40):
