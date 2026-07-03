@@ -4,6 +4,36 @@ from pathlib import Path
 import numpy as np
 
 
+DEFAULT_SEPARATOR_PATTERN = (
+    r"<\s*br\s*/?\s*>"
+    r"|<\s*/?\s*p[^>]*>"
+    r"|<\s*/?\s*li[^>]*>"
+    r"|<\s*/?\s*h[1-6][^>]*>"
+    r"|\r\n|\n|\r"
+)
+FALLBACK_SENTENCE_PATTERN = r"(?<=[。！？!?；;])"
+
+
+def split_text_units(
+    text,
+    separator_pattern=DEFAULT_SEPARATOR_PATTERN,
+    fallback_sentence_split=True,
+):
+    """Split text into candidate units before semantic boundary scoring."""
+    blocks = [
+        block.strip()
+        for block in re.split(separator_pattern, text, flags=re.I)
+        if block.strip()
+    ]
+    if len(blocks) <= 1 and fallback_sentence_split:
+        blocks = [
+            block.strip()
+            for block in re.split(FALLBACK_SENTENCE_PATTERN, text)
+            if block.strip()
+        ]
+    return blocks
+
+
 def split_by_br_semantic(
     text,
     model=None,
@@ -13,13 +43,15 @@ def split_by_br_semantic(
     min_chars=300,
     max_chars=900,
     batch_size=32,
+    separator_pattern=DEFAULT_SEPARATOR_PATTERN,
+    fallback_sentence_split=True,
 ):
-    """Split <br>-separated text by semantic boundary scores."""
-    blocks = [
-        block.strip()
-        for block in re.split(r"<br\s*/?>", text, flags=re.I)
-        if block.strip()
-    ]
+    """Split separated text by semantic boundary scores."""
+    blocks = split_text_units(
+        text,
+        separator_pattern=separator_pattern,
+        fallback_sentence_split=fallback_sentence_split,
+    )
     if len(blocks) <= 1:
         return blocks, blocks, np.array([]), None
 
@@ -65,7 +97,7 @@ def split_by_br_semantic(
 
 
 def split_txt_by_br_semantic(txt_path, encoding="utf-8", **kwargs):
-    """Read a txt file and split its <br>-separated text."""
+    """Read a txt file and split its separated text."""
     text = Path(txt_path).read_text(encoding=encoding)
     return split_by_br_semantic(text, **kwargs)
 
