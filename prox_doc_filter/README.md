@@ -8,6 +8,29 @@
 
 这里判断的是“是否适合作为通用语言模型预训练语料”，不是事实正确性、公司业务价值、敏感信息、版权或重复检测。
 
+## 推荐使用方式：先从 Notebook 开始
+
+如果你需要在公司环境逐步排查 CUDA、依赖、模型目录、prompt 或输出问题，首先打开：
+
+- [`prox_doc_filter_notebook.ipynb`](prox_doc_filter_notebook.ipynb)
+
+Notebook 没有把流程封装进类或大型函数，而是依次展示：
+
+1. 修改本地路径和文本键；
+2. 检查 PyTorch/CUDA；
+3. 单独加载 tokenizer；
+4. 单独加载模型；
+5. 构造一条手写文本；
+6. 查看完整 Llama-2 prompt；
+7. 查看 token 数和截断情况；
+8. 生成并打印模型原始程序；
+9. 自己修改 `keep/drop/unknown` 解析规则；
+10. 只读取少量 JSONL；
+11. 逐条推理并人工检查；
+12. 确认后才写出结果。
+
+建议第一轮保持 `MAX_RECORDS=20`，不要直接运行全量。目录中的 `run_doc_filter.py` 是逻辑确认后的可选批处理参考，不是必须使用的入口。
+
 ## 1. 模型介绍与下载地址
 
 本阶段使用：
@@ -89,7 +112,27 @@ python validate_input.py \
 
 存在非法 JSON、缺少字段或字段不是字符串时，命令返回非零退出码。
 
-## 4. 在线直接运行
+## 4. 在 Jupyter 中逐步运行
+
+如果环境已经安装 Jupyter：
+
+```bash
+cd prox_doc_filter
+jupyter lab prox_doc_filter_notebook.ipynb
+```
+
+也可以在已有的 Jupyter 服务中打开该文件。公司离线环境应在第一个配置 cell 中设置：
+
+```python
+MODEL_PATH = "/models/prox/web-doc-refining-lm"
+LOCAL_FILES_ONLY = True
+INPUT_PATH = Path("/data/input/sample.jsonl")
+TEXT_KEY = "content"
+```
+
+每次只执行一个 cell；一旦出错，可以直接查看当前的 `tokenizer`、`inputs`、`program` 等变量，而不需要穿过完整 CLI 或类封装。
+
+## 5. 可选：在线批处理脚本
 
 如果运行环境可以连接 Hugging Face：
 
@@ -105,7 +148,7 @@ python run_doc_filter.py \
 
 首次运行会下载模型。
 
-## 5. 公司离线环境运行
+## 6. 可选：公司离线批处理脚本
 
 设置完全离线模式：
 
@@ -134,7 +177,7 @@ python run_doc_filter.py \
 --overwrite
 ```
 
-## 6. 输出字段
+## 7. 输出字段
 
 脚本保留原 JSON 的全部字段，并添加：
 
@@ -155,7 +198,7 @@ python run_doc_filter.py \
 
 脚本结束时会打印总数、keep/drop/unknown、截断和错误数量。
 
-## 7. 解析策略
+## 8. 解析策略
 
 默认使用保守的严格策略：
 
@@ -173,7 +216,7 @@ drop / drop!  -> drop
 
 原仓库逻辑是：输出中包含 `drop` 就丢弃，否则保留。该模式可能把 `do not drop` 误判为 drop，因此不建议作为第一轮默认值。
 
-## 8. 长文档处理
+## 9. 长文档处理
 
 模型最大上下文为 2048 token。脚本会为最多 32 个输出 token 预留空间，对超长 prompt 从右侧截断，并设置：
 
@@ -183,7 +226,7 @@ drop / drop!  -> drop
 
 因此长文档的第一阶段判断主要基于开头内容。第一轮测试应单独统计和抽查 `prox_doc_truncated=true` 的样本，不要直接把这类结果用于不可恢复的删除。
 
-## 9. 推荐上线顺序
+## 10. 推荐上线顺序
 
 1. 先运行 `validate_input.py`；
 2. 使用 100 条数据验证环境和输出格式；
@@ -195,7 +238,7 @@ drop / drop!  -> drop
 
 公开模型主要面向英文网页语料。中文、多语言、OCR、代码、表格或行业专有文本必须分组评估，不能直接假设效果等同于英文通用网页。
 
-## 10. 测试
+## 11. 测试
 
 核心逻辑测试不需要下载模型：
 
