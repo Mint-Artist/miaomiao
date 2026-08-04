@@ -1,0 +1,8 @@
+# PyTorch 必须根据公司环境的 CUDA 版本单独安装，参见 README.md。
+accelerate>=0.27.2,<1.0
+huggingface-hub>=0.22.0,<1.0
+numpy==1.26.4
+safetensors>=0.4.2,<1.0
+sentencepiece>=0.1.99,<1.0
+tqdm>=4.66.0,<5.0
+transformers==4.39.1
