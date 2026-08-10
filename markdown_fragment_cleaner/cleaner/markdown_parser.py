@@ -14,8 +14,6 @@ from .models import Block, Document
 
 
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s)\]}>]+", re.IGNORECASE)
-_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
-_CLOSING_PUNCTUATION = set("，。！？；：、,.!?;:)]}）》」』】")
 
 
 @dataclass
@@ -240,12 +238,7 @@ def _render_inline(token: Token, policy: ContentPolicy) -> str:
         elif child_type == "softbreak":
             previous = _last_visible_character(output)
             following = _next_visible_character(children, index + 1)
-            if previous and following and _CJK_RE.match(previous) and (
-                _CJK_RE.match(following) or following in _CLOSING_PUNCTUATION
-            ):
-                output.append("")
-            else:
-                output.append(" ")
+            output.append(_softbreak_separator(previous, following))
         elif child_type == "hardbreak":
             output.append("\n")
         elif child_type == "html_inline":
@@ -399,15 +392,28 @@ def _collect_metadata(node: _Node, raw_text: str) -> Dict[str, Any]:
 
 def _last_visible_character(parts: Sequence[str]) -> str:
     for part in reversed(parts):
-        if part:
-            return part[-1]
+        for character in reversed(part):
+            if not character.isspace():
+                return character
     return ""
 
 
 def _next_visible_character(children: Sequence[Token], start: int) -> str:
     for child in children[start:]:
         if child.type in {"text", "code_inline"} and child.content:
-            return child.content[0]
+            for character in child.content:
+                if not character.isspace():
+                    return character
         if child.type == "image" and child.content:
-            return child.content[0]
+            for character in child.content:
+                if not character.isspace():
+                    return character
+    return ""
+
+
+def _softbreak_separator(previous: str, following: str) -> str:
+    """Keep English line wrapping readable without inserting spaces into CJK text."""
+
+    if previous and following and previous.isascii() and following.isascii():
+        return " "
     return ""

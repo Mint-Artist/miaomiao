@@ -28,7 +28,7 @@ class ContentPolicy:
 
 @dataclass
 class ChunkConfig:
-    target_min_tokens: int = 100
+    target_min_tokens: int = 300
     target_max_tokens: int = 768
     hard_max_tokens: int = 1536
     attach_intro_to_structured_block: bool = True
@@ -47,9 +47,9 @@ class ChunkConfig:
 
 @dataclass
 class RuleConfig:
-    hard_min_tokens: int = 40
-    structured_hard_min_tokens: int = 20
-    soft_min_tokens: int = 100
+    hard_min_tokens: int = 300
+    structured_hard_min_tokens: int = 300
+    soft_min_tokens: int = 300
     hard_max_tokens: int = 1536
     max_replacement_chars: int = 2
     max_replacement_ratio: float = 0.005
@@ -63,6 +63,28 @@ class RuleConfig:
         "因此", "所以", "但是", "然而", "不过", "此外", "同时", "上述", "前述",
         "由此", "综上", "其中", "对此", "这些", "这种", "该方法", "该系统", "该模型",
     )
+
+
+@dataclass
+class NormalizationConfig:
+    """Conservative text repairs applied after AST parsing and before chunking."""
+
+    enabled: bool = True
+    strip_boundary_artifacts: bool = True
+    normalize_prose_spacing: bool = True
+    deduplicate_adjacent_prose_blocks: bool = True
+    deduplicate_repeated_sentence_sequences: bool = True
+    min_duplicate_sentence_chars: int = 15
+    min_duplicate_sequence_chars: int = 30
+    max_duplicate_sequence_sentences: int = 20
+
+    def validate(self) -> None:
+        if self.min_duplicate_sentence_chars <= 0:
+            raise ValueError("min_duplicate_sentence_chars must be positive")
+        if self.min_duplicate_sequence_chars <= 0:
+            raise ValueError("min_duplicate_sequence_chars must be positive")
+        if self.max_duplicate_sequence_sentences <= 0:
+            raise ValueError("max_duplicate_sequence_sentences must be positive")
 
 
 @dataclass
@@ -114,12 +136,14 @@ class CleanerConfig:
     rules: RuleConfig = field(default_factory=RuleConfig)
     templates: TemplateConfig = field(default_factory=TemplateConfig)
     tokenizer_name_or_path: Optional[str] = None
+    normalization: NormalizationConfig = field(default_factory=NormalizationConfig)
 
     def validate(self) -> None:
         if not self.input_path:
             raise ValueError("input_path is required")
         if not self.input.markdown_key:
             raise ValueError("markdown_key is required")
+        self.normalization.validate()
         self.chunk.validate()
         self.templates.validate()
         if self.rules.hard_min_tokens <= 0:

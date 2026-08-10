@@ -175,6 +175,15 @@ class SemanticChunker:
                 if key not in seen:
                     flags.append(flag)
                     seen.add(key)
+        repairs = [
+            repair
+            for item in blocks
+            for repair in item.block.metadata.get("repairs", [])
+            if isinstance(repair, dict)
+        ]
+        metadata = {"chunker_version": "markdown-ast-section-v1"}
+        if repairs:
+            metadata["repairs"] = repairs
         return Fragment(
             fragment_id="frag-" + digest,
             doc_id=document.doc_id,
@@ -189,7 +198,7 @@ class SemanticChunker:
             end_line=max(item.block.end_line for item in blocks),
             source_row=document.source_row,
             flags=flags,
-            metadata={"chunker_version": "markdown-ast-section-v1"},
+            metadata=metadata,
         )
 
     def _add_context(

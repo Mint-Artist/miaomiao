@@ -12,6 +12,7 @@ from .chunker import SemanticChunker
 from .config import CleanerConfig
 from .markdown_parser import MarkdownDocumentParser
 from .models import Document, Fragment, PreparedBlock
+from .normalizer import DocumentNormalizer, NormalizationStats
 from .rules import RuleEngine
 from .templates import TemplateIndex
 from .tokenization import ApproxTokenCounter, HuggingFaceTokenCounter, TokenCounter
@@ -25,6 +26,17 @@ class CleaningSummary:
     parse_error_rows: int = 0
     documents: int = 0
     parsed_blocks: int = 0
+    documents_repaired: int = 0
+    blocks_repaired: int = 0
+    boundary_artifacts_removed: int = 0
+    empty_blocks_removed: int = 0
+    spacing_blocks_repaired: int = 0
+    extra_spaces_removed: int = 0
+    cjk_spaces_removed: int = 0
+    duplicate_blocks_removed: int = 0
+    duplicate_sentence_sequences_removed: int = 0
+    duplicate_sentences_removed: int = 0
+    duplicate_chars_removed: int = 0
     template_blocks_rejected: int = 0
     rule_blocks_rejected: int = 0
     accepted_fragments: int = 0
@@ -52,11 +64,12 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
         counter = ApproxTokenCounter()
 
     parser = MarkdownDocumentParser(config.content)
+    normalizer = DocumentNormalizer(config.normalization)
     rules = RuleEngine(config.rules, config.content, counter)
     chunker = SemanticChunker(config.chunk, counter)
 
     templates = TemplateIndex(config.templates)
-    templates.fit(_iter_valid_documents(config, parser))
+    templates.fit(_iter_valid_documents(config, parser, normalizer))
     templates.save(config.output.templates_path)
 
     summary = CleaningSummary()
@@ -99,6 +112,9 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
 
             try:
                 document = _document_from_row(config, parser, row, row_number, markdown)
+                parsed_block_count = len(document.blocks)
+                normalization = normalizer.normalize(document)
+                document = normalization.document
             except Exception as exc:
                 summary.parse_error_rows += 1
                 summary.rejection_reasons["markdown_parse_error"] += 1
@@ -113,8 +129,9 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
                 )
                 continue
 
+            _record_normalization_stats(summary, normalization.stats)
             summary.documents += 1
-            summary.parsed_blocks += len(document.blocks)
+            summary.parsed_blocks += parsed_block_count
             prepared: List[Optional[PreparedBlock]] = []
             for block in document.blocks:
                 template = templates.match(document.url, block)
@@ -199,6 +216,7 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
 def _iter_valid_documents(
     config: CleanerConfig,
     parser: MarkdownDocumentParser,
+    normalizer: DocumentNormalizer,
 ) -> Iterable[Document]:
     for row_number, row, error, _ in _iter_rows(config.input_path):
         if error is not None:
@@ -207,9 +225,30 @@ def _iter_valid_documents(
         if not isinstance(markdown, str) or not markdown.strip():
             continue
         try:
-            yield _document_from_row(config, parser, row, row_number, markdown)
+            document = _document_from_row(config, parser, row, row_number, markdown)
+            yield normalizer.normalize(document).document
         except Exception:
             continue
+
+
+def _record_normalization_stats(
+    summary: CleaningSummary,
+    stats: NormalizationStats,
+) -> None:
+    for name in (
+        "documents_repaired",
+        "blocks_repaired",
+        "boundary_artifacts_removed",
+        "empty_blocks_removed",
+        "spacing_blocks_repaired",
+        "extra_spaces_removed",
+        "cjk_spaces_removed",
+        "duplicate_blocks_removed",
+        "duplicate_sentence_sequences_removed",
+        "duplicate_sentences_removed",
+        "duplicate_chars_removed",
+    ):
+        setattr(summary, name, getattr(summary, name) + getattr(stats, name))
 
 
 def _document_from_row(

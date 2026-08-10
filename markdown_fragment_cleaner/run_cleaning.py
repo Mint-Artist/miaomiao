@@ -17,6 +17,7 @@ from cleaner.config import (
     ChunkConfig,
     ContentPolicy,
     InputConfig,
+    NormalizationConfig,
     OutputConfig,
     RuleConfig,
     TemplateConfig,
@@ -40,11 +41,21 @@ OUTPUT_DIR = PROJECT_DIR / "output"
 
 # 片段长度使用近似中英混合 token 计数。若指定真实 tokenizer 路径，需安装 transformers。
 TOKENIZER_NAME_OR_PATH = None  # 例如 "/models/Qwen3-0.6B"
-TARGET_MIN_TOKENS = 100
+TARGET_MIN_TOKENS = 300
 TARGET_MAX_TOKENS = 768
 HARD_MAX_TOKENS = 1536
-HARD_MIN_TOKENS = 40
-STRUCTURED_HARD_MIN_TOKENS = 20
+HARD_MIN_TOKENS = 300
+STRUCTURED_HARD_MIN_TOKENS = 300
+
+# 保守文本修复：仅删除边界处明确的 HTML 注释残片，并修复相邻的完全重复正文。
+ENABLE_TEXT_NORMALIZATION = True
+STRIP_BOUNDARY_ARTIFACTS = True
+NORMALIZE_PROSE_SPACING = True
+DEDUPLICATE_ADJACENT_PROSE_BLOCKS = True
+DEDUPLICATE_REPEATED_SENTENCE_SEQUENCES = True
+MIN_DUPLICATE_SENTENCE_CHARS = 15
+MIN_DUPLICATE_SEQUENCE_CHARS = 30
+MAX_DUPLICATE_SEQUENCE_SENTENCES = 20
 
 # 正文类型策略。
 KEEP_LISTS = True
@@ -89,6 +100,16 @@ CONFIG = CleanerConfig(
         keep_code_blocks=KEEP_CODE_BLOCKS,
         keep_html_visible_text=KEEP_HTML_VISIBLE_TEXT,
         keep_image_alt_text=KEEP_IMAGE_ALT_TEXT,
+    ),
+    normalization=NormalizationConfig(
+        enabled=ENABLE_TEXT_NORMALIZATION,
+        strip_boundary_artifacts=STRIP_BOUNDARY_ARTIFACTS,
+        normalize_prose_spacing=NORMALIZE_PROSE_SPACING,
+        deduplicate_adjacent_prose_blocks=DEDUPLICATE_ADJACENT_PROSE_BLOCKS,
+        deduplicate_repeated_sentence_sequences=DEDUPLICATE_REPEATED_SENTENCE_SEQUENCES,
+        min_duplicate_sentence_chars=MIN_DUPLICATE_SENTENCE_CHARS,
+        min_duplicate_sequence_chars=MIN_DUPLICATE_SEQUENCE_CHARS,
+        max_duplicate_sequence_sentences=MAX_DUPLICATE_SEQUENCE_SENTENCES,
     ),
     chunk=ChunkConfig(
         target_min_tokens=TARGET_MIN_TOKENS,

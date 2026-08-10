@@ -8,6 +8,7 @@
 JSONL 原始 Markdown
 → CommonMark/GFM AST 解析
 → 标题树与正文 block
+→ 保守的边界噪声清理与相邻重复修复
 → 同站点模板检测
 → 确定性 block 规则
 → 同标题路径语义切片
@@ -46,7 +47,7 @@ python3 run_cleaning.py
 ## 输出
 
 - `accepted.jsonl`：通过全部硬规则和软风险检查，可直接进入后续抽检的数据。
-- `review.jsonl`：没有确定性缺陷，但存在过短、承接式开头、不闭环等风险的数据。
+- `review.jsonl`：没有确定性缺陷，但存在承接式开头、不闭环等软风险的数据。
 - `rejected.jsonl`：确定性噪声、禁用类型、无效输入及完整拒绝原因。
 - `templates.json`：按 host 学到的高频页眉、页脚和站点模板，建议第一次运行后人工检查。
 - `statistics.json`：输入规模、保留 token、各规则命中次数以及本次完整配置。
@@ -64,14 +65,17 @@ python3 run_cleaning.py
   "content": "清洗后的正文……",
   "block_ids": ["doc-1-b000001"],
   "block_types": ["paragraph"],
-  "token_count": 235,
+  "token_count": 423,
   "start_line": 3,
   "end_line": 11,
   "source_row": 1,
   "context_before": "前一个有效 block 的末尾……",
   "context_after": "后一个有效 block 的开头……",
   "flags": [],
-  "decision": "accepted"
+  "decision": "accepted",
+  "metadata": {
+    "chunker_version": "markdown-ast-section-v1"
+  }
 }
 ```
 
@@ -92,6 +96,20 @@ python3 run_cleaning.py
 - 超长普通段落只在句末拆分，不使用 overlap window。
 - 任意 block 被删除后都会形成切片边界，不会把噪声两侧强行拼接。
 
+## 保守文本修复
+
+AST 解析之后、模板检测和语义切片之前，会执行独立的文本规范化层：
+
+- 只在正文边界删除明确的 HTML 注释残片，例如 `-->`、`<!--`、空注释以及边界 BOM/零宽字符；正文内部出现的 `-->` 保留。
+- Markdown 软换行仅在两侧都是 ASCII 字符时补一个空格；中文与英文、数字或中文之间因折行产生的边界直接拼接。
+- 普通正文中的连续多空格压缩为一个，汉字之间及汉字与中文标点之间的空格删除；原有中英文单空格保留。
+- 相邻且完全相同的普通正文 block 只保留第一份。
+- 对普通段落、HTML 可见正文和引用按句切分，识别 `A A`、`A B A B` 一类相邻完全重复序列，只保留第一份。
+- 单句自动去重要求至少 15 个非空白字符，多句重复组要求每份至少 30 个非空白字符，避免删除短促强调。
+- 非相邻重复、只有语义相似但文字不同的句子不会自动删除；列表、表格和代码不会执行正文空格改写或句子去重。
+
+所有实际修复都记录在片段 `metadata.repairs` 中，汇总数量会写入 `statistics.json`。修复发生在切片之前，因此删除重复内容后，切片器仍可继续合并后续同章节正文。
+
 ## 模板检测
 
 模板检测会扫描 JSONL 两遍。第一遍按 host 统计规范化 block 的 document frequency，第二遍执行删除和切片。规范化只用于匹配，不会写回正文。
@@ -109,10 +127,10 @@ python3 run_cleaning.py
 
 默认近似计数把单个汉字、英文词和标点视为 token 单元，主要用于便宜稳定的切片。默认值：
 
-- 目标下限：100 token；不足时进入 `review`。
+- 目标下限：300 token。
 - 目标上限：768 token。
-- 普通正文硬下限：40 token。
-- 列表、表格、引用硬下限：20 token。
+- 普通正文硬下限：300 token，不足时直接进入 `rejected`。
+- 列表、表格、引用硬下限：300 token，不再使用短结构化内容例外。
 - 硬上限：1536 token。
 
 如果后续训练固定使用 Qwen tokenizer，可设置：
@@ -129,7 +147,7 @@ TOKENIZER_NAME_OR_PATH = "/models/Qwen3-0.6B"
 PYTHONPATH=. python3 -m unittest discover -s tests -v
 ```
 
-测试覆盖：标题与 front matter、链接/图片、嵌套列表、表格、引用、代码排除、站点模板、嵌套 JSON key、无效 JSON 审计、accepted/review/rejected 分流。
+测试覆盖：标题与 front matter、链接/图片、嵌套列表、表格、引用、代码排除、边界残片清理、保守相邻去重、站点模板、300 token 硬下限、嵌套 JSON key、无效 JSON 审计、accepted/review/rejected 分流。
 
 ## 明确边界
 
