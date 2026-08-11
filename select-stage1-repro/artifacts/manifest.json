@@ -1,0 +1,32 @@
+{
+  "paper": {
+    "path": "papers/2026.acl-long.2219.pdf",
+    "source": "https://aclanthology.org/2026.acl-long.2219.pdf",
+    "bytes": 881247,
+    "sha256": "8d8e95476c0a831be3baaab0daae17dcea9f5f5083d75a095581b07086a13840"
+  },
+  "base_model": {
+    "path": "artifacts/models/Qwen3-0.6B-Base",
+    "source": "https://huggingface.co/Qwen/Qwen3-0.6B-Base",
+    "weight_file": "model.safetensors",
+    "weight_bytes": 1192135096,
+    "weight_sha256": "cd2a512003e2f9f3cd3c32a9c3573f820bb28c940f73c57b1ddaa983d9223eba"
+  },
+  "fineweb_100m": {
+    "path": "artifacts/data/fineweb_select_100m",
+    "source": "https://huggingface.co/datasets/HuggingFaceFW/fineweb",
+    "config": "sample-10BT",
+    "train_tokens": 99999744,
+    "validation_tokens": 1048576,
+    "documents_consumed": 147031,
+    "token_file_bytes": 404193280,
+    "token_file_sha256": "e042429277ed6c11a6f868f1f5ee2b24ddff445d1785a83cf42cbf5e8fce2193"
+  },
+  "smoke_checkpoint": {
+    "path": "outputs/smoke-qwen3-0.6b-8k-fp32/final",
+    "optimizer_steps": 2,
+    "tokens_consumed": 16384,
+    "weight_bytes": 2384234968,
+    "weight_sha256": "0dbce8c371a993a10f588b9c0c0a8bf778114bffdc20f5edd8269cc65ce3d1e4"
+  }
+}
