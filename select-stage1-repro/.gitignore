@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Downloaded/modelled artifacts are reproducible but too large for Git.
+artifacts/data/
+artifacts/models/
+outputs/
+tmp/

@@ -1,0 +1,10 @@
+# Install torch and torch_npu from the official Ascend image/version matrix first.
+# Do not let pip replace that hardware-matched pair with a CPU or CUDA build.
+numpy==1.26.4
+transformers==4.52.4
+datasets==3.4.1
+accelerate==1.5.2
+safetensors==0.5.3
+tokenizers==0.21.1
+sentencepiece==0.2.0
+tqdm==4.67.1
