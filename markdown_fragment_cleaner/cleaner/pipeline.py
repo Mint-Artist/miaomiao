@@ -4,14 +4,16 @@ import json
 import os
 import tempfile
 from collections import Counter
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
 
+from .assemblers import FragmentAssembler, WholeDocumentAssembler
 from .chunker import SemanticChunker
 from .config import CleanerConfig
 from .markdown_parser import MarkdownDocumentParser
-from .models import Document, Fragment, PreparedBlock
+from .models import Document, Fragment, PreparedBlock, WholeDocumentRecord
 from .normalizer import DocumentNormalizer, NormalizationStats
 from .rules import RuleEngine
 from .templates import TemplateIndex
@@ -44,13 +46,22 @@ class CleaningSummary:
     rejected_fragments: int = 0
     accepted_tokens: int = 0
     review_tokens: int = 0
+    accepted_documents: int = 0
+    review_documents: int = 0
+    rejected_documents: int = 0
+    accepted_document_tokens: int = 0
+    review_document_tokens: int = 0
     rejection_reasons: Counter[str] = field(default_factory=Counter)
     review_reasons: Counter[str] = field(default_factory=Counter)
+    document_rejection_reasons: Counter[str] = field(default_factory=Counter)
+    document_review_reasons: Counter[str] = field(default_factory=Counter)
 
     def to_dict(self) -> Dict[str, Any]:
         value = asdict(self)
         value["rejection_reasons"] = dict(self.rejection_reasons.most_common())
         value["review_reasons"] = dict(self.review_reasons.most_common())
+        value["document_rejection_reasons"] = dict(self.document_rejection_reasons.most_common())
+        value["document_review_reasons"] = dict(self.document_review_reasons.most_common())
         return value
 
 
@@ -63,51 +74,65 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
     else:
         counter = ApproxTokenCounter()
 
-    parser = MarkdownDocumentParser(config.content)
+    parser = MarkdownDocumentParser(config.content, config.normalization)
     normalizer = DocumentNormalizer(config.normalization)
     rules = RuleEngine(config.rules, config.content, counter)
     chunker = SemanticChunker(config.chunk, counter)
+    fragment_assembler = FragmentAssembler(chunker)
+    document_assembler = WholeDocumentAssembler(counter)
+    emit_fragments = config.assembly.output_mode in {"fragment", "both"}
+    emit_documents = config.assembly.output_mode in {"document", "both"}
 
     templates = TemplateIndex(config.templates)
     templates.fit(_iter_valid_documents(config, parser, normalizer))
     templates.save(config.output.templates_path)
 
     summary = CleaningSummary()
-    preview: List[Fragment] = []
-    with (
-        _AtomicJsonlWriter(config.output.accepted_path) as accepted_writer,
-        _AtomicJsonlWriter(config.output.review_path) as review_writer,
-        _AtomicJsonlWriter(config.output.rejected_path) as rejected_writer,
-    ):
+    fragment_preview: List[Fragment] = []
+    document_preview: List[WholeDocumentRecord] = []
+    with ExitStack() as stack:
+        fragment_writers: Optional[Tuple[_AtomicJsonlWriter, _AtomicJsonlWriter, _AtomicJsonlWriter]] = None
+        document_writers: Optional[Tuple[_AtomicJsonlWriter, _AtomicJsonlWriter, _AtomicJsonlWriter]] = None
+        if emit_fragments:
+            fragment_writers = (
+                stack.enter_context(_AtomicJsonlWriter(config.output.accepted_path)),
+                stack.enter_context(_AtomicJsonlWriter(config.output.review_path)),
+                stack.enter_context(_AtomicJsonlWriter(config.output.rejected_path)),
+            )
+        if emit_documents:
+            document_writers = (
+                stack.enter_context(_AtomicJsonlWriter(config.output.document_accepted_path)),
+                stack.enter_context(_AtomicJsonlWriter(config.output.document_review_path)),
+                stack.enter_context(_AtomicJsonlWriter(config.output.document_rejected_path)),
+            )
+
         for row_number, row, error, raw_line in _iter_rows(config.input_path):
             summary.input_rows += 1
             if error is not None:
                 summary.invalid_json_rows += 1
                 summary.rejection_reasons["invalid_json"] += 1
-                rejected_writer.write(
-                    {
-                        "kind": "input_row",
-                        "decision": "rejected",
-                        "reason": "invalid_json",
-                        "source_row": row_number,
-                        "error": error,
-                        "raw_line_preview": raw_line[:1000],
-                    }
-                )
+                payload = {
+                    "kind": "input_row",
+                    "decision": "rejected",
+                    "reason": "invalid_json",
+                    "source_row": row_number,
+                    "error": error,
+                    "raw_line_preview": raw_line[:1000],
+                }
+                _write_rejection_to_active_modes(payload, fragment_writers, document_writers)
                 continue
 
             markdown = _optional_path(row, config.input.markdown_key)
             if not isinstance(markdown, str) or not markdown.strip():
                 summary.missing_markdown_rows += 1
                 summary.rejection_reasons["missing_markdown"] += 1
-                rejected_writer.write(
-                    {
-                        "kind": "input_row",
-                        "decision": "rejected",
-                        "reason": "missing_markdown",
-                        "source_row": row_number,
-                    }
-                )
+                payload = {
+                    "kind": "input_row",
+                    "decision": "rejected",
+                    "reason": "missing_markdown",
+                    "source_row": row_number,
+                }
+                _write_rejection_to_active_modes(payload, fragment_writers, document_writers)
                 continue
 
             try:
@@ -118,38 +143,40 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
             except Exception as exc:
                 summary.parse_error_rows += 1
                 summary.rejection_reasons["markdown_parse_error"] += 1
-                rejected_writer.write(
-                    {
-                        "kind": "input_row",
-                        "decision": "rejected",
-                        "reason": "markdown_parse_error",
-                        "source_row": row_number,
-                        "error": "%s: %s" % (type(exc).__name__, exc),
-                    }
-                )
+                payload = {
+                    "kind": "input_row",
+                    "decision": "rejected",
+                    "reason": "markdown_parse_error",
+                    "source_row": row_number,
+                    "error": "%s: %s" % (type(exc).__name__, exc),
+                }
+                _write_rejection_to_active_modes(payload, fragment_writers, document_writers)
                 continue
 
             _record_normalization_stats(summary, normalization.stats)
             summary.documents += 1
             summary.parsed_blocks += parsed_block_count
             prepared: List[Optional[PreparedBlock]] = []
+            removed_blocks: List[Dict[str, Any]] = []
             for block in document.blocks:
                 template = templates.match(document.url, block)
                 if template is not None:
                     summary.template_blocks_rejected += 1
                     summary.rejection_reasons["site_template"] += 1
-                    rejected_writer.write(
-                        {
-                            "kind": "block",
-                            "decision": "rejected",
-                            "reason": "site_template",
-                            "doc_id": document.doc_id,
-                            "url": document.url,
-                            "source_row": document.source_row,
-                            "block": block.to_dict(),
-                            "template": template.to_dict(),
-                        }
-                    )
+                    if fragment_writers is not None:
+                        fragment_writers[2].write(
+                            {
+                                "kind": "block",
+                                "decision": "rejected",
+                                "reason": "site_template",
+                                "doc_id": document.doc_id,
+                                "url": document.url,
+                                "source_row": document.source_row,
+                                "block": block.to_dict(),
+                                "template": template.to_dict(),
+                            }
+                        )
+                    removed_blocks.append({"block_id": block.block_id, "reason": "site_template"})
                     prepared.append(None)
                     continue
 
@@ -158,59 +185,156 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
                     summary.rule_blocks_rejected += 1
                     hard_codes = [flag.code for flag in block_result.flags if flag.severity == "hard"]
                     summary.rejection_reasons.update(hard_codes)
-                    rejected_writer.write(
-                        {
-                            "kind": "block",
-                            "decision": "rejected",
-                            "reason": "hard_rule",
-                            "doc_id": document.doc_id,
-                            "url": document.url,
-                            "source_row": document.source_row,
-                            "block": block.to_dict(),
-                            "flags": [flag.to_dict() for flag in block_result.flags],
-                        }
+                    if fragment_writers is not None:
+                        fragment_writers[2].write(
+                            {
+                                "kind": "block",
+                                "decision": "rejected",
+                                "reason": "hard_rule",
+                                "doc_id": document.doc_id,
+                                "url": document.url,
+                                "source_row": document.source_row,
+                                "block": block.to_dict(),
+                                "flags": [flag.to_dict() for flag in block_result.flags],
+                            }
+                        )
+                    removed_blocks.append(
+                        {"block_id": block.block_id, "reason": "hard_rule", "flags": hard_codes}
                     )
                     prepared.append(None)
                 else:
                     prepared.append(PreparedBlock(block, block_result.flags))
 
-            for fragment in chunker.chunk_document(document, prepared):
-                result = rules.evaluate_fragment(fragment)
-                fragment.flags = result.flags
-                fragment.decision = result.decision
-                if result.decision == "accepted":
-                    summary.accepted_fragments += 1
-                    summary.accepted_tokens += fragment.token_count
-                    accepted_writer.write(fragment.to_dict())
-                elif result.decision == "review":
-                    summary.review_fragments += 1
-                    summary.review_tokens += fragment.token_count
-                    summary.review_reasons.update(
-                        flag.code for flag in result.flags if flag.severity == "soft"
+            if fragment_writers is not None:
+                for fragment in fragment_assembler.assemble(document, prepared):
+                    _route_fragment(
+                        fragment,
+                        rules,
+                        fragment_writers,
+                        summary,
+                        fragment_preview,
+                        config.output.preview_fragments,
                     )
-                    review_writer.write(fragment.to_dict())
-                else:
-                    summary.rejected_fragments += 1
-                    summary.rejection_reasons.update(
-                        flag.code for flag in result.flags if flag.severity == "hard"
-                    )
-                    rejected_writer.write(
+
+            if document_writers is not None:
+                whole = document_assembler.assemble(document, prepared, removed_blocks)
+                if whole is None:
+                    summary.rejected_documents += 1
+                    summary.document_rejection_reasons["empty_after_cleaning"] += 1
+                    document_writers[2].write(
                         {
-                            "kind": "fragment",
+                            "kind": "whole_document",
                             "decision": "rejected",
-                            "reason": "hard_rule",
-                            "fragment": fragment.to_dict(),
+                            "reason": "empty_after_cleaning",
+                            "doc_id": document.doc_id,
+                            "url": document.url,
+                            "source_row": document.source_row,
+                            "removed_blocks": removed_blocks,
                         }
                     )
-                if (
-                    result.decision in {"accepted", "review"}
-                    and len(preview) < config.output.preview_fragments
-                ):
-                    preview.append(fragment)
+                else:
+                    _route_document(
+                        whole,
+                        rules,
+                        config,
+                        document_writers,
+                        summary,
+                        document_preview,
+                        config.output.preview_documents,
+                    )
 
     _write_statistics(config, summary, len(templates.entries))
-    _write_preview(config.output.preview_path, preview, summary)
+    if emit_fragments:
+        _write_preview(config.output.preview_path, fragment_preview, summary)
+    if emit_documents:
+        _write_document_preview(config.output.document_preview_path, document_preview, summary)
     return summary
+
+
+def _write_rejection_to_active_modes(
+    payload: Mapping[str, Any],
+    fragment_writers: Optional[Tuple[_AtomicJsonlWriter, _AtomicJsonlWriter, _AtomicJsonlWriter]],
+    document_writers: Optional[Tuple[_AtomicJsonlWriter, _AtomicJsonlWriter, _AtomicJsonlWriter]],
+) -> None:
+    if fragment_writers is not None:
+        fragment_writers[2].write(payload)
+    if document_writers is not None:
+        document_writers[2].write(payload)
+
+
+def _route_fragment(
+    fragment: Fragment,
+    rules: RuleEngine,
+    writers: Tuple[_AtomicJsonlWriter, _AtomicJsonlWriter, _AtomicJsonlWriter],
+    summary: CleaningSummary,
+    preview: List[Fragment],
+    preview_limit: int,
+) -> None:
+    result = rules.evaluate_fragment(fragment)
+    fragment.flags = result.flags
+    fragment.decision = result.decision
+    if result.decision == "accepted":
+        summary.accepted_fragments += 1
+        summary.accepted_tokens += fragment.token_count
+        writers[0].write(fragment.to_dict())
+    elif result.decision == "review":
+        summary.review_fragments += 1
+        summary.review_tokens += fragment.token_count
+        summary.review_reasons.update(flag.code for flag in result.flags if flag.severity == "soft")
+        writers[1].write(fragment.to_dict())
+    else:
+        summary.rejected_fragments += 1
+        summary.rejection_reasons.update(flag.code for flag in result.flags if flag.severity == "hard")
+        writers[2].write(
+            {
+                "kind": "fragment",
+                "decision": "rejected",
+                "reason": "hard_rule",
+                "fragment": fragment.to_dict(),
+            }
+        )
+    if result.decision in {"accepted", "review"} and len(preview) < preview_limit:
+        preview.append(fragment)
+
+
+def _route_document(
+    document: WholeDocumentRecord,
+    rules: RuleEngine,
+    config: CleanerConfig,
+    writers: Tuple[_AtomicJsonlWriter, _AtomicJsonlWriter, _AtomicJsonlWriter],
+    summary: CleaningSummary,
+    preview: List[WholeDocumentRecord],
+    preview_limit: int,
+) -> None:
+    result = rules.evaluate_document(document, config.assembly)
+    document.flags = result.flags
+    document.decision = result.decision
+    if result.decision == "accepted":
+        summary.accepted_documents += 1
+        summary.accepted_document_tokens += document.token_count
+        writers[0].write(document.to_dict())
+    elif result.decision == "review":
+        summary.review_documents += 1
+        summary.review_document_tokens += document.token_count
+        summary.document_review_reasons.update(
+            flag.code for flag in result.flags if flag.severity == "soft"
+        )
+        writers[1].write(document.to_dict())
+    else:
+        summary.rejected_documents += 1
+        summary.document_rejection_reasons.update(
+            flag.code for flag in result.flags if flag.severity == "hard"
+        )
+        writers[2].write(
+            {
+                "kind": "whole_document",
+                "decision": "rejected",
+                "reason": "hard_rule",
+                "document": document.to_dict(),
+            }
+        )
+    if result.decision in {"accepted", "review"} and len(preview) < preview_limit:
+        preview.append(document)
 
 
 def _iter_valid_documents(
@@ -372,20 +496,68 @@ def _write_preview(path: str, fragments: List[Fragment], summary: CleaningSummar
     target.write_text("\n".join(output).rstrip() + "\n", encoding="utf-8")
 
 
+def _write_document_preview(
+    path: str,
+    documents: List[WholeDocumentRecord],
+    summary: CleaningSummary,
+) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    output = [
+        "# Markdown 全文清洗预览",
+        "",
+        "- 自动接收全文：`%d`" % summary.accepted_documents,
+        "- 灰区全文：`%d`" % summary.review_documents,
+        "- 拒绝全文：`%d`" % summary.rejected_documents,
+        "",
+    ]
+    for index, document in enumerate(documents, 1):
+        flags = ", ".join(flag.code for flag in document.flags) or "none"
+        output.extend(
+            [
+                "## %d. %s" % (index, _one_line(document.doc_title)),
+                "",
+                "- 状态：`%s`" % document.decision,
+                "- Token：`%d`" % document.token_count,
+                "- 章节数：`%d`" % len(document.sections),
+                "- 删除 block：`%d`" % len(document.removed_blocks),
+                "- 源行：`%d-%d`" % (document.start_line, document.end_line),
+                "- 标记：`%s`" % _one_line(flags),
+                "",
+                document.content,
+                "",
+                "---",
+                "",
+            ]
+        )
+    target.write_text("\n".join(output).rstrip() + "\n", encoding="utf-8")
+
+
 def _one_line(value: Any) -> str:
     return str(value).replace("`", "'").replace("\n", " ").strip()
 
 
 def _validate_output_paths(config: CleanerConfig) -> None:
     input_path = Path(config.input_path).expanduser().resolve()
-    paths = [
-        config.output.accepted_path,
-        config.output.review_path,
-        config.output.rejected_path,
-        config.output.templates_path,
-        config.output.statistics_path,
-        config.output.preview_path,
-    ]
+    paths = [config.output.templates_path, config.output.statistics_path]
+    if config.assembly.output_mode in {"fragment", "both"}:
+        paths.extend(
+            [
+                config.output.accepted_path,
+                config.output.review_path,
+                config.output.rejected_path,
+                config.output.preview_path,
+            ]
+        )
+    if config.assembly.output_mode in {"document", "both"}:
+        paths.extend(
+            [
+                config.output.document_accepted_path,
+                config.output.document_review_path,
+                config.output.document_rejected_path,
+                config.output.document_preview_path,
+            ]
+        )
     resolved = [Path(path).expanduser().resolve() for path in paths]
     if input_path in resolved:
         raise ValueError("an output path must not overwrite the input JSONL")

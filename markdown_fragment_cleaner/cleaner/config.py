@@ -70,6 +70,9 @@ class NormalizationConfig:
     """Conservative text repairs applied after AST parsing and before chunking."""
 
     enabled: bool = True
+    softbreak_policy: str = "smart"
+    min_structured_softbreak_lines: int = 2
+    preserve_complete_sentence_lines: bool = True
     strip_boundary_artifacts: bool = True
     normalize_prose_spacing: bool = True
     deduplicate_adjacent_prose_blocks: bool = True
@@ -79,12 +82,36 @@ class NormalizationConfig:
     max_duplicate_sequence_sentences: int = 20
 
     def validate(self) -> None:
+        if self.softbreak_policy not in {"smart", "preserve", "unwrap"}:
+            raise ValueError("softbreak_policy must be smart, preserve, or unwrap")
+        if self.min_structured_softbreak_lines < 2:
+            raise ValueError("min_structured_softbreak_lines must be >= 2")
         if self.min_duplicate_sentence_chars <= 0:
             raise ValueError("min_duplicate_sentence_chars must be positive")
         if self.min_duplicate_sequence_chars <= 0:
             raise ValueError("min_duplicate_sequence_chars must be positive")
         if self.max_duplicate_sequence_sentences <= 0:
             raise ValueError("max_duplicate_sequence_sentences must be positive")
+
+
+@dataclass
+class AssemblyConfig:
+    """Choose fragment, whole-document, or paired output assembly."""
+
+    output_mode: str = "fragment"
+    document_min_tokens: int = 300
+    document_max_tokens: int = 6000
+    document_over_max_policy: str = "review"
+
+    def validate(self) -> None:
+        if self.output_mode not in {"fragment", "document", "both"}:
+            raise ValueError("output_mode must be fragment, document, or both")
+        if self.document_min_tokens <= 0:
+            raise ValueError("document_min_tokens must be positive")
+        if self.document_max_tokens < self.document_min_tokens:
+            raise ValueError("document_max_tokens must be >= document_min_tokens")
+        if self.document_over_max_policy not in {"review", "reject", "allow"}:
+            raise ValueError("document_over_max_policy must be review, reject, or allow")
 
 
 @dataclass
@@ -124,6 +151,11 @@ class OutputConfig:
     statistics_path: str = "output/statistics.json"
     preview_path: str = "output/preview.md"
     preview_fragments: int = 100
+    document_accepted_path: str = "output/documents/accepted.jsonl"
+    document_review_path: str = "output/documents/review.jsonl"
+    document_rejected_path: str = "output/documents/rejected.jsonl"
+    document_preview_path: str = "output/documents/preview.md"
+    preview_documents: int = 100
 
 
 @dataclass
@@ -137,6 +169,7 @@ class CleanerConfig:
     templates: TemplateConfig = field(default_factory=TemplateConfig)
     tokenizer_name_or_path: Optional[str] = None
     normalization: NormalizationConfig = field(default_factory=NormalizationConfig)
+    assembly: AssemblyConfig = field(default_factory=AssemblyConfig)
 
     def validate(self) -> None:
         if not self.input_path:
@@ -144,6 +177,7 @@ class CleanerConfig:
         if not self.input.markdown_key:
             raise ValueError("markdown_key is required")
         self.normalization.validate()
+        self.assembly.validate()
         self.chunk.validate()
         self.templates.validate()
         if self.rules.hard_min_tokens <= 0:

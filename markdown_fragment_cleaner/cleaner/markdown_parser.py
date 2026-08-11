@@ -9,7 +9,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
-from .config import ContentPolicy
+from .config import ContentPolicy, NormalizationConfig
+from .linebreaks import SoftbreakNormalizer
 from .models import Block, Document
 
 
@@ -55,8 +56,13 @@ class _VisibleHTMLParser(HTMLParser):
 class MarkdownDocumentParser:
     """Parse CommonMark/GFM blocks while retaining source line spans."""
 
-    def __init__(self, policy: Optional[ContentPolicy] = None) -> None:
+    def __init__(
+        self,
+        policy: Optional[ContentPolicy] = None,
+        normalization: Optional[NormalizationConfig] = None,
+    ) -> None:
         self.policy = policy or ContentPolicy()
+        self.softbreaks = SoftbreakNormalizer(normalization or NormalizationConfig())
         self.md = MarkdownIt("commonmark", {"html": True})
         self.md.enable("table")
         self.md.enable("strikethrough")
@@ -84,7 +90,7 @@ class MarkdownDocumentParser:
             token_type = node.token.type if node.token else ""
             if token_type == "heading_open":
                 level = int(node.token.tag[1:])
-                heading_text = _render_inline_descendants(node, self.policy).strip()
+                heading_text = _render_inline_descendants(node, self.policy, self.softbreaks).strip()
                 if heading_text:
                     while heading_stack and heading_stack[-1][0] >= level:
                         heading_stack.pop()
@@ -131,17 +137,17 @@ class MarkdownDocumentParser:
 
         if token_type == "paragraph_open":
             block_type = "paragraph"
-            text = _render_inline_descendants(node, self.policy)
+            text = _render_inline_descendants(node, self.policy, self.softbreaks)
         elif token_type in {"bullet_list_open", "ordered_list_open"}:
             block_type = "list"
-            text = _render_list(node, self.policy)
+            text = _render_list(node, self.policy, self.softbreaks)
         elif token_type == "blockquote_open":
             block_type = "blockquote"
-            visible = _render_container(node, self.policy)
+            visible = _render_container(node, self.policy, self.softbreaks)
             text = "\n".join("> " + line if line else ">" for line in visible.splitlines())
         elif token_type == "table_open":
             block_type = "table"
-            text = _render_table(node, self.policy)
+            text = _render_table(node, self.policy, self.softbreaks)
         elif token_type in {"fence", "code_block"}:
             block_type = "code"
             info = (token.info or "").strip()
@@ -155,7 +161,7 @@ class MarkdownDocumentParser:
         else:
             # Unknown top-level extensions are kept only when they expose
             # meaningful inline text. This avoids silently losing content.
-            text = _render_container(node, self.policy).strip()
+            text = _render_container(node, self.policy, self.softbreaks).strip()
             if not text:
                 return None
             block_type = "other"
@@ -215,40 +221,52 @@ def _source_map(node: _Node) -> Tuple[int, int]:
     return min(value[0] for value in maps), max(value[1] for value in maps)
 
 
-def _render_inline_descendants(node: _Node, policy: ContentPolicy) -> str:
+def _render_inline_descendants(
+    node: _Node,
+    policy: ContentPolicy,
+    softbreaks: SoftbreakNormalizer,
+) -> str:
     inline_nodes = [child for child in _walk(node) if child.token and child.token.type == "inline"]
-    return "\n".join(_render_inline(node.token, policy) for node in inline_nodes).strip()
+    return "\n".join(_render_inline(node.token, policy, softbreaks) for node in inline_nodes).strip()
 
 
-def _render_inline(token: Token, policy: ContentPolicy) -> str:
+def _render_inline(
+    token: Token,
+    policy: ContentPolicy,
+    softbreaks: SoftbreakNormalizer,
+) -> str:
     children = token.children or []
-    output: List[str] = []
-    for index, child in enumerate(children):
+    lines: List[List[str]] = [[]]
+    for child in children:
         child_type = child.type
         if child_type == "text":
-            output.append(child.content)
+            lines[-1].append(child.content)
         elif child_type == "code_inline":
             if policy.preserve_inline_code_markers:
-                output.append("`%s`" % child.content.replace("`", "\\`"))
+                lines[-1].append("`%s`" % child.content.replace("`", "\\`"))
             else:
-                output.append(child.content)
+                lines[-1].append(child.content)
         elif child_type == "image":
             if policy.keep_image_alt_text and child.content.strip():
-                output.append(child.content.strip())
+                lines[-1].append(child.content.strip())
         elif child_type == "softbreak":
-            previous = _last_visible_character(output)
-            following = _next_visible_character(children, index + 1)
-            output.append(_softbreak_separator(previous, following))
+            lines.append([])
         elif child_type == "hardbreak":
-            output.append("\n")
+            lines[-1].append("\n")
         elif child_type == "html_inline":
-            output.append(_visible_html(child.content))
+            lines[-1].append(_visible_html(child.content))
         # link/emphasis/strike open/close tokens deliberately emit nothing;
         # their visible child text is emitted normally.
-    return html.unescape("".join(output)).strip()
+    rendered_lines = ["".join(parts) for parts in lines]
+    return html.unescape(softbreaks.join(rendered_lines)).strip()
 
 
-def _render_list(node: _Node, policy: ContentPolicy, depth: int = 0) -> str:
+def _render_list(
+    node: _Node,
+    policy: ContentPolicy,
+    softbreaks: SoftbreakNormalizer,
+    depth: int = 0,
+) -> str:
     ordered = bool(node.token and node.token.type == "ordered_list_open")
     start = 1
     if node.token and ordered:
@@ -265,15 +283,15 @@ def _render_list(node: _Node, policy: ContentPolicy, depth: int = 0) -> str:
         for item_child in child.children:
             item_type = item_child.token.type if item_child.token else ""
             if item_type == "paragraph_open":
-                value = _render_inline_descendants(item_child, policy)
+                value = _render_inline_descendants(item_child, policy, softbreaks)
                 if value:
                     direct_parts.append(value)
             elif item_type in {"bullet_list_open", "ordered_list_open"}:
-                value = _render_list(item_child, policy, depth + 1)
+                value = _render_list(item_child, policy, softbreaks, depth + 1)
                 if value:
                     nested_parts.append(value)
             else:
-                value = _render_container(item_child, policy)
+                value = _render_container(item_child, policy, softbreaks)
                 if value:
                     direct_parts.append(value)
         prefix = "%d. " % item_number if ordered else "- "
@@ -288,7 +306,11 @@ def _render_list(node: _Node, policy: ContentPolicy, depth: int = 0) -> str:
     return "\n".join(rendered).strip()
 
 
-def _render_table(node: _Node, policy: ContentPolicy) -> str:
+def _render_table(
+    node: _Node,
+    policy: ContentPolicy,
+    softbreaks: SoftbreakNormalizer,
+) -> str:
     rows: List[List[str]] = []
     header_rows = 0
     for row in _find_nodes(node, "tr_open"):
@@ -299,7 +321,7 @@ def _render_table(node: _Node, policy: ContentPolicy) -> str:
             if cell_type not in {"th_open", "td_open"}:
                 continue
             is_header = is_header or cell_type == "th_open"
-            value = _render_inline_descendants(cell, policy).replace("|", "\\|")
+            value = _render_inline_descendants(cell, policy, softbreaks).replace("|", "\\|")
             cells.append(re.sub(r"\s*\n\s*", " ", value).strip())
         if cells:
             rows.append(cells)
@@ -317,21 +339,25 @@ def _render_table(node: _Node, policy: ContentPolicy) -> str:
     return "\n".join(output)
 
 
-def _render_container(node: _Node, policy: ContentPolicy) -> str:
+def _render_container(
+    node: _Node,
+    policy: ContentPolicy,
+    softbreaks: SoftbreakNormalizer,
+) -> str:
     token_type = node.token.type if node.token else ""
     if token_type == "paragraph_open":
-        return _render_inline_descendants(node, policy)
+        return _render_inline_descendants(node, policy, softbreaks)
     if token_type in {"bullet_list_open", "ordered_list_open"}:
-        return _render_list(node, policy)
+        return _render_list(node, policy, softbreaks)
     if token_type == "table_open":
-        return _render_table(node, policy)
+        return _render_table(node, policy, softbreaks)
     if token_type == "html_block" and node.token:
         return _visible_html(node.token.content)
     if token_type in {"fence", "code_block"} and node.token:
         return node.token.content.strip()
-    parts = [_render_container(child, policy) for child in node.children]
+    parts = [_render_container(child, policy, softbreaks) for child in node.children]
     if node.token and node.token.type == "inline":
-        return _render_inline(node.token, policy)
+        return _render_inline(node.token, policy, softbreaks)
     return "\n\n".join(value for value in parts if value).strip()
 
 
@@ -388,32 +414,3 @@ def _collect_metadata(node: _Node, raw_text: str) -> Dict[str, Any]:
         "url_char_count": url_chars,
         "raw_char_count": len(raw_text),
     }
-
-
-def _last_visible_character(parts: Sequence[str]) -> str:
-    for part in reversed(parts):
-        for character in reversed(part):
-            if not character.isspace():
-                return character
-    return ""
-
-
-def _next_visible_character(children: Sequence[Token], start: int) -> str:
-    for child in children[start:]:
-        if child.type in {"text", "code_inline"} and child.content:
-            for character in child.content:
-                if not character.isspace():
-                    return character
-        if child.type == "image" and child.content:
-            for character in child.content:
-                if not character.isspace():
-                    return character
-    return ""
-
-
-def _softbreak_separator(previous: str, following: str) -> str:
-    """Keep English line wrapping readable without inserting spaces into CJK text."""
-
-    if previous and following and previous.isascii() and following.isascii():
-        return " "
-    return ""

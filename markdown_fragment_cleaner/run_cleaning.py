@@ -14,6 +14,7 @@ from pathlib import Path
 
 from cleaner import CleanerConfig, clean_jsonl
 from cleaner.config import (
+    AssemblyConfig,
     ChunkConfig,
     ContentPolicy,
     InputConfig,
@@ -49,6 +50,9 @@ STRUCTURED_HARD_MIN_TOKENS = 300
 
 # 保守文本修复：仅删除边界处明确的 HTML 注释残片，并修复相邻的完全重复正文。
 ENABLE_TEXT_NORMALIZATION = True
+SOFTBREAK_POLICY = "smart"  # smart / preserve / unwrap
+MIN_STRUCTURED_SOFTBREAK_LINES = 2
+PRESERVE_COMPLETE_SENTENCE_LINES = True
 STRIP_BOUNDARY_ARTIFACTS = True
 NORMALIZE_PROSE_SPACING = True
 DEDUPLICATE_ADJACENT_PROSE_BLOCKS = True
@@ -56,6 +60,12 @@ DEDUPLICATE_REPEATED_SENTENCE_SEQUENCES = True
 MIN_DUPLICATE_SENTENCE_CHARS = 15
 MIN_DUPLICATE_SEQUENCE_CHARS = 30
 MAX_DUPLICATE_SEQUENCE_SENTENCES = 20
+
+# 输出模式：fragment 保留原切片；document 输出全文；both 同时输出两套结果。
+OUTPUT_MODE = "both"
+DOCUMENT_MIN_TOKENS = 300
+DOCUMENT_MAX_TOKENS = 6000
+DOCUMENT_OVER_MAX_POLICY = "review"  # review / reject / allow
 
 # 正文类型策略。
 KEEP_LISTS = True
@@ -70,8 +80,9 @@ ENABLE_SITE_TEMPLATE_DETECTION = True
 TEMPLATE_MIN_HOST_DOCUMENTS = 20
 TEMPLATE_MIN_DOCUMENTS = 5
 
-# 最多把多少个 accepted/review 片段写入可读 Markdown 预览。
+# 最多把多少个 accepted/review 结果写入各自的可读 Markdown 预览。
 PREVIEW_FRAGMENTS = 100
+PREVIEW_DOCUMENTS = 100
 
 
 # =========================== 配置装配与运行 ===========================
@@ -92,6 +103,11 @@ CONFIG = CleanerConfig(
         statistics_path=str(OUTPUT_DIR / "statistics.json"),
         preview_path=str(OUTPUT_DIR / "preview.md"),
         preview_fragments=PREVIEW_FRAGMENTS,
+        document_accepted_path=str(OUTPUT_DIR / "documents" / "accepted.jsonl"),
+        document_review_path=str(OUTPUT_DIR / "documents" / "review.jsonl"),
+        document_rejected_path=str(OUTPUT_DIR / "documents" / "rejected.jsonl"),
+        document_preview_path=str(OUTPUT_DIR / "documents" / "preview.md"),
+        preview_documents=PREVIEW_DOCUMENTS,
     ),
     content=ContentPolicy(
         keep_lists=KEEP_LISTS,
@@ -103,6 +119,9 @@ CONFIG = CleanerConfig(
     ),
     normalization=NormalizationConfig(
         enabled=ENABLE_TEXT_NORMALIZATION,
+        softbreak_policy=SOFTBREAK_POLICY,
+        min_structured_softbreak_lines=MIN_STRUCTURED_SOFTBREAK_LINES,
+        preserve_complete_sentence_lines=PRESERVE_COMPLETE_SENTENCE_LINES,
         strip_boundary_artifacts=STRIP_BOUNDARY_ARTIFACTS,
         normalize_prose_spacing=NORMALIZE_PROSE_SPACING,
         deduplicate_adjacent_prose_blocks=DEDUPLICATE_ADJACENT_PROSE_BLOCKS,
@@ -110,6 +129,12 @@ CONFIG = CleanerConfig(
         min_duplicate_sentence_chars=MIN_DUPLICATE_SENTENCE_CHARS,
         min_duplicate_sequence_chars=MIN_DUPLICATE_SEQUENCE_CHARS,
         max_duplicate_sequence_sentences=MAX_DUPLICATE_SEQUENCE_SENTENCES,
+    ),
+    assembly=AssemblyConfig(
+        output_mode=OUTPUT_MODE,
+        document_min_tokens=DOCUMENT_MIN_TOKENS,
+        document_max_tokens=DOCUMENT_MAX_TOKENS,
+        document_over_max_policy=DOCUMENT_OVER_MAX_POLICY,
     ),
     chunk=ChunkConfig(
         target_min_tokens=TARGET_MIN_TOKENS,
@@ -134,7 +159,12 @@ CONFIG = CleanerConfig(
 def main() -> None:
     summary = clean_jsonl(CONFIG)
     print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
-    print("\n完成。人工预览：%s" % CONFIG.output.preview_path)
+    previews = []
+    if CONFIG.assembly.output_mode in {"fragment", "both"}:
+        previews.append(CONFIG.output.preview_path)
+    if CONFIG.assembly.output_mode in {"document", "both"}:
+        previews.append(CONFIG.output.document_preview_path)
+    print("\n完成。人工预览：%s" % "，".join(previews))
 
 
 if __name__ == "__main__":

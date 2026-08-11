@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from cleaner.config import (
+    AssemblyConfig,
     ChunkConfig,
     CleanerConfig,
     ContentPolicy,
@@ -80,6 +81,36 @@ world correctly.
 
         self.assertEqual(document.blocks[0].text, "中文正文连接到Qwen3模型，然后重新连接到中文内容。")
         self.assertEqual(document.blocks[1].text, "search engine handles hello, world correctly.")
+
+    def test_smart_softbreak_preserves_structured_lines(self) -> None:
+        markdown = """姓名：张三
+电话：13800000000
+地址：上海
+
+第一句话已经完整结束。
+第二句话也提供了完整信息。
+"""
+        document = MarkdownDocumentParser().parse(markdown, "d-structured-softbreak")
+
+        self.assertEqual(
+            document.blocks[0].text,
+            "姓名：张三\n电话：13800000000\n地址：上海",
+        )
+        self.assertEqual(
+            document.blocks[1].text,
+            "第一句话已经完整结束。\n第二句话也提供了完整信息。",
+        )
+
+    def test_smart_softbreak_unwraps_visual_line_wrapping(self) -> None:
+        markdown = """系统首先对用户查询进行规范化，然后从索引中
+生成候选文档，接着计算相关性特征并完成排序。
+"""
+        document = MarkdownDocumentParser().parse(markdown, "d-visual-wrap")
+
+        self.assertEqual(
+            document.blocks[0].text,
+            "系统首先对用户查询进行规范化，然后从索引中生成候选文档，接着计算相关性特征并完成排序。",
+        )
 
 
 class NormalizerTest(unittest.TestCase):
@@ -332,9 +363,166 @@ class PipelineTest(unittest.TestCase):
                 "repeated_sentence_sequences_removed",
             )
 
+    def test_both_mode_keeps_fragment_schema_and_emits_one_cleaned_document(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "input.jsonl"
+            source.write_text(
+                json.dumps(
+                    {
+                        "doc_id": "d-both",
+                        "content": """# 用户信息
+
+姓名：张三
+电话：13800000000
+地址：上海
+
+## 检索流程
+
+检索系统先规范化查询，再生成候选文档，最后依据相关性得分输出完整结果。
+
+上一篇
+""",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            output = _output_config(root)
+            config = CleanerConfig(
+                input_path=str(source),
+                output=output,
+                chunk=ChunkConfig(target_min_tokens=1, target_max_tokens=500, hard_max_tokens=1000),
+                rules=RuleConfig(
+                    hard_min_tokens=1,
+                    structured_hard_min_tokens=1,
+                    soft_min_tokens=1,
+                    hard_max_tokens=1000,
+                ),
+                templates=TemplateConfig(enabled=False),
+                assembly=AssemblyConfig(
+                    output_mode="both",
+                    document_min_tokens=1,
+                    document_max_tokens=1000,
+                ),
+            )
+
+            summary = clean_jsonl(config)
+            fragments = _read_jsonl(output.accepted_path) + _read_jsonl(output.review_path)
+            documents = (
+                _read_jsonl(output.document_accepted_path)
+                + _read_jsonl(output.document_review_path)
+            )
+
+            self.assertGreaterEqual(len(fragments), 1)
+            self.assertTrue(all("fragment_id" in fragment for fragment in fragments))
+            self.assertTrue(all("record_type" not in fragment for fragment in fragments))
+            self.assertEqual(len(documents), 1)
+            whole = documents[0]
+            self.assertEqual(whole["record_type"], "whole_document")
+            self.assertIn("姓名：张三\n电话：13800000000\n地址：上海", whole["content"])
+            self.assertIn("\n\n", whole["content"])
+            self.assertNotIn("用户信息", whole["content"])
+            self.assertNotIn("检索流程", whole["content"])
+            self.assertNotIn("上一篇", whole["content"])
+            self.assertEqual([section["heading_path"] for section in whole["sections"]], [
+                ["用户信息"],
+                ["用户信息", "检索流程"],
+            ])
+            self.assertTrue(all(section["start_char"] < section["end_char"] for section in whole["sections"]))
+            self.assertEqual(whole["removed_blocks"][0]["reason"], "hard_rule")
+            self.assertEqual(summary.rule_blocks_rejected, 1)
+            self.assertEqual(summary.accepted_documents + summary.review_documents, 1)
+
+    def test_document_mode_routes_over_max_to_review_without_truncating(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "input.jsonl"
+            prose = (
+                "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike "
+                "november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee zulu."
+            )
+            source.write_text(
+                json.dumps({"doc_id": "d-long", "content": prose}, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            output = _output_config(root)
+            config = CleanerConfig(
+                input_path=str(source),
+                output=output,
+                templates=TemplateConfig(enabled=False),
+                assembly=AssemblyConfig(
+                    output_mode="document",
+                    document_min_tokens=5,
+                    document_max_tokens=20,
+                    document_over_max_policy="review",
+                ),
+            )
+
+            summary = clean_jsonl(config)
+            review = _read_jsonl(output.document_review_path)
+
+            self.assertEqual(len(review), 1)
+            self.assertEqual(review[0]["content"], prose)
+            self.assertGreater(review[0]["token_count"], 20)
+            self.assertIn("whole_document_too_long", {flag["code"] for flag in review[0]["flags"]})
+            self.assertEqual(summary.review_documents, 1)
+            self.assertFalse(Path(output.accepted_path).exists())
+            self.assertFalse(Path(output.review_path).exists())
+            self.assertFalse(Path(output.rejected_path).exists())
+
+    def test_document_mode_rejects_document_below_minimum(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "input.jsonl"
+            source.write_text(
+                json.dumps({"doc_id": "d-short", "content": "这是一段完整但很短的正文。"}, ensure_ascii=False)
+                + "\n",
+                encoding="utf-8",
+            )
+            output = _output_config(root)
+            config = CleanerConfig(
+                input_path=str(source),
+                output=output,
+                templates=TemplateConfig(enabled=False),
+                assembly=AssemblyConfig(
+                    output_mode="document",
+                    document_min_tokens=50,
+                    document_max_tokens=100,
+                ),
+            )
+
+            summary = clean_jsonl(config)
+            rejected = _read_jsonl(output.document_rejected_path)
+
+            self.assertEqual(len(rejected), 1)
+            self.assertEqual(rejected[0]["kind"], "whole_document")
+            self.assertEqual(rejected[0]["document"]["content"], "这是一段完整但很短的正文。")
+            self.assertIn(
+                "too_short",
+                {flag["code"] for flag in rejected[0]["document"]["flags"]},
+            )
+            self.assertEqual(summary.rejected_documents, 1)
+
 
 def _read_jsonl(path: str):
     return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line]
+
+
+def _output_config(root: Path) -> OutputConfig:
+    return OutputConfig(
+        accepted_path=str(root / "fragments" / "accepted.jsonl"),
+        review_path=str(root / "fragments" / "review.jsonl"),
+        rejected_path=str(root / "fragments" / "rejected.jsonl"),
+        templates_path=str(root / "templates.json"),
+        statistics_path=str(root / "statistics.json"),
+        preview_path=str(root / "fragments" / "preview.md"),
+        document_accepted_path=str(root / "documents" / "accepted.jsonl"),
+        document_review_path=str(root / "documents" / "review.jsonl"),
+        document_rejected_path=str(root / "documents" / "rejected.jsonl"),
+        document_preview_path=str(root / "documents" / "preview.md"),
+    )
 
 
 def _fragment_with_content(content: str, counter: ApproxTokenCounter) -> Fragment:

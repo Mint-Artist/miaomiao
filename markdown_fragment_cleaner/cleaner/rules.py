@@ -5,8 +5,8 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple
 
-from .config import ContentPolicy, RuleConfig
-from .models import Block, Fragment, RuleFlag
+from .config import AssemblyConfig, ContentPolicy, RuleConfig
+from .models import Block, Fragment, RuleFlag, WholeDocumentRecord
 from .tokenization import ApproxTokenCounter, TokenCounter
 
 
@@ -94,6 +94,55 @@ class RuleEngine:
             flags.append(RuleFlag("unclosed_brackets", "soft", "bracket counts suggest truncation"))
         if _looks_like_standalone_heading(stripped, tokens, fragment.block_types):
             flags.append(RuleFlag("heading_like_fragment", "soft", "short non-sentential fragment resembles a title"))
+        return RuleResult(_decision(flags), _deduplicate(flags))
+
+    def evaluate_document(
+        self,
+        document: WholeDocumentRecord,
+        assembly: AssemblyConfig,
+    ) -> RuleResult:
+        flags = list(document.flags)
+        flags.extend(self._text_flags(document.content, document.content))
+        tokens = document.token_count or self.counter.count(document.content)
+
+        if tokens < assembly.document_min_tokens:
+            flags.append(
+                RuleFlag("too_short", "hard", "whole document is below token minimum", float(tokens))
+            )
+        if tokens > assembly.document_max_tokens:
+            if assembly.document_over_max_policy == "review":
+                flags.append(
+                    RuleFlag(
+                        "whole_document_too_long",
+                        "soft",
+                        "whole document exceeds preferred token maximum and was not truncated",
+                        float(tokens),
+                    )
+                )
+            elif assembly.document_over_max_policy == "reject":
+                flags.append(
+                    RuleFlag(
+                        "whole_document_too_long",
+                        "hard",
+                        "whole document exceeds hard token maximum",
+                        float(tokens),
+                    )
+                )
+
+        stripped = document.content.strip()
+        if stripped.startswith(self.config.context_dependent_prefixes):
+            flags.append(RuleFlag("context_dependent_start", "soft", "likely depends on preceding context"))
+        if _INCOMPLETE_END_RE.search(stripped):
+            flags.append(RuleFlag("incomplete_end", "soft", "ends with an introducer or non-terminal punctuation"))
+        elif (
+            document.block_types
+            and document.block_types[-1] in {"paragraph", "html"}
+            and len(stripped) >= 40
+            and not _TERMINAL_RE.search(stripped)
+        ):
+            flags.append(RuleFlag("non_terminal_end", "soft", "prose does not end with terminal punctuation"))
+        if _has_obvious_unclosed_brackets(stripped):
+            flags.append(RuleFlag("unclosed_brackets", "soft", "bracket counts suggest truncation"))
         return RuleResult(_decision(flags), _deduplicate(flags))
 
     def _type_is_enabled(self, block_type: str) -> bool:

@@ -1,6 +1,6 @@
-# Markdown Fragment Cleaner
+# Markdown Cleaner
 
-该目录是一套独立的、无大模型依赖的 Markdown 正文片段清洗器。它直接读取 JSONL 中某个字段的原始 Markdown，不要求上游先生成 `blocks`，也不需要使用 CLI 参数。
+该目录是一套独立的、无大模型依赖的 Markdown 正文清洗器。它直接读取 JSONL 中某个字段的原始 Markdown，不要求上游先生成 `blocks`，也不需要使用 CLI 参数。清洗后既可以沿用原来的语义切片，也可以输出不切片的全文，或者同时生成两套结果。
 
 处理流程：
 
@@ -11,8 +11,9 @@ JSONL 原始 Markdown
 → 保守的边界噪声清理与相邻重复修复
 → 同站点模板检测
 → 确定性 block 规则
-→ 同标题路径语义切片
-→ candidate 完整性规则
+→ fragment：同标题路径语义切片
+  document：按原顺序组装一条清洗后全文
+→ 各自的长度与完整性规则
 → accepted / review / rejected
 ```
 
@@ -34,6 +35,11 @@ ID_KEY = "doc_id"
 URL_KEY = "url"
 TITLE_KEY = "title"
 OUTPUT_DIR = Path("/path/to/output")
+
+# fragment：只输出旧切片；document：只输出全文；both：两套都输出
+OUTPUT_MODE = "both"
+DOCUMENT_MIN_TOKENS = 300
+DOCUMENT_MAX_TOKENS = 6000
 ```
 
 然后直接运行：
@@ -44,16 +50,24 @@ python3 run_cleaning.py
 
 `MARKDOWN_KEY` 等键支持点分隔的嵌套路径，例如 `payload.content`。ID、URL 或标题缺失不会中断：ID 会退化为 JSONL 行号，标题会退化为 Markdown 的首个 H1/标题；缺少 URL 时只跳过站点模板检测。
 
-## 输出
+## 输出模式与文件
 
-- `accepted.jsonl`：通过全部硬规则和软风险检查，可直接进入后续抽检的数据。
-- `review.jsonl`：没有确定性缺陷，但存在承接式开头、不闭环等软风险的数据。
-- `rejected.jsonl`：确定性噪声、禁用类型、无效输入及完整拒绝原因。
-- `templates.json`：按 host 学到的高频页眉、页脚和站点模板，建议第一次运行后人工检查。
-- `statistics.json`：输入规模、保留 token、各规则命中次数以及本次完整配置。
-- `preview.md`：前若干个 accepted/review 片段的肉眼检查版本。
+- `OUTPUT_MODE = "fragment"`：只运行原有切片组装器，输出格式和路径保持兼容。
+- `OUTPUT_MODE = "document"`：每篇输入文档最多生成一条清洗后全文，不做切片、不截断。
+- `OUTPUT_MODE = "both"`：共享同一次解析、规范化、去重和 block 过滤，同时输出切片与全文。
 
-输出采用“一条片段一行 JSONL”。主要字段包括：
+片段结果仍写在输出根目录：`accepted.jsonl`、`review.jsonl`、`rejected.jsonl` 和 `preview.md`。
+
+全文结果单独写在 `documents/` 下：
+
+- `documents/accepted.jsonl`：位于全文 token 范围内且没有软风险。
+- `documents/review.jsonl`：默认包含超过 6000 token 但仍保留完整内容的全文，以及其他软风险全文。
+- `documents/rejected.jsonl`：不足 300 token、清洗后为空或命中全文硬规则的数据。
+- `documents/preview.md`：前若干条 accepted/review 全文的可读预览。
+
+`templates.json` 和 `statistics.json` 是两种模式共享的模板审计与运行统计。
+
+片段输出继续采用“一条片段一行 JSONL”。主要字段包括：
 
 ```json
 {
@@ -79,6 +93,41 @@ python3 run_cleaning.py
 }
 ```
 
+全文输出采用“一篇输入文档最多一行 JSONL”。主要字段包括：
+
+```json
+{
+  "record_id": "docrec-...",
+  "record_type": "whole_document",
+  "doc_id": "doc-1",
+  "url": "https://example.com/a",
+  "doc_title": "文档标题",
+  "content": "第一段清洗后的正文。\n\n姓名：张三\n电话：13800000000",
+  "block_ids": ["doc-1-b000001", "doc-1-b000002"],
+  "block_types": ["paragraph", "paragraph"],
+  "token_count": 1850,
+  "start_line": 3,
+  "end_line": 96,
+  "source_row": 1,
+  "sections": [
+    {
+      "heading_path": ["文档标题", "基本信息"],
+      "block_ids": ["doc-1-b000001", "doc-1-b000002"],
+      "start_char": 0,
+      "end_char": 42
+    }
+  ],
+  "removed_blocks": [
+    {"block_id": "doc-1-b000003", "reason": "hard_rule", "flags": ["known_boilerplate"]}
+  ],
+  "flags": [],
+  "decision": "accepted",
+  "metadata": {"assembler_version": "whole-document-v1"}
+}
+```
+
+`sections` 保存标题路径和它在 `content` 中的字符区间；标题本身不混入正文。`removed_blocks` 是全文组装前被模板或硬规则删除的 block 审计信息。
+
 ## AST 与正文策略
 
 解析基于 `markdown-it-py` 的 CommonMark/GFM AST，而不是正则模拟 Markdown：
@@ -101,14 +150,15 @@ python3 run_cleaning.py
 AST 解析之后、模板检测和语义切片之前，会执行独立的文本规范化层：
 
 - 只在正文边界删除明确的 HTML 注释残片，例如 `-->`、`<!--`、空注释以及边界 BOM/零宽字符；正文内部出现的 `-->` 保留。
-- Markdown 软换行仅在两侧都是 ASCII 字符时补一个空格；中文与英文、数字或中文之间因折行产生的边界直接拼接。
+- Markdown 软换行默认采用 `smart` 策略：字段行（如“姓名：”“电话：”）、连续步骤、引导式结构和逐行完整句保留 `\n`；普通网页视觉折行会展开，两侧都是 ASCII 时补一个空格，否则直接拼接。
+- 可把 `SOFTBREAK_POLICY` 改为 `preserve` 以保留全部软换行，或改为 `unwrap` 以展开全部软换行。AST 中的段落、列表、表格等 block 边界不受这个变量影响。
 - 普通正文中的连续多空格压缩为一个，汉字之间及汉字与中文标点之间的空格删除；原有中英文单空格保留。
 - 相邻且完全相同的普通正文 block 只保留第一份。
 - 对普通段落、HTML 可见正文和引用按句切分，识别 `A A`、`A B A B` 一类相邻完全重复序列，只保留第一份。
 - 单句自动去重要求至少 15 个非空白字符，多句重复组要求每份至少 30 个非空白字符，避免删除短促强调。
 - 非相邻重复、只有语义相似但文字不同的句子不会自动删除；列表、表格和代码不会执行正文空格改写或句子去重。
 
-所有实际修复都记录在片段 `metadata.repairs` 中，汇总数量会写入 `statistics.json`。修复发生在切片之前，因此删除重复内容后，切片器仍可继续合并后续同章节正文。
+所有实际修复都记录在结果 `metadata.repairs` 中，汇总数量会写入 `statistics.json`。修复发生在两种组装器之前，因此切片与全文使用完全相同的清洗结果。
 
 ## 模板检测
 
@@ -125,13 +175,21 @@ AST 解析之后、模板检测和语义切片之前，会执行独立的文本�
 
 ## 长度阈值
 
-默认近似计数把单个汉字、英文词和标点视为 token 单元，主要用于便宜稳定的切片。默认值：
+默认近似计数把单个汉字、英文词和标点视为 token 单元。切片模式默认值：
 
 - 目标下限：300 token。
 - 目标上限：768 token。
 - 普通正文硬下限：300 token，不足时直接进入 `rejected`。
 - 列表、表格、引用硬下限：300 token，不再使用短结构化内容例外。
 - 硬上限：1536 token。
+
+全文模式使用独立阈值：
+
+- `DOCUMENT_MIN_TOKENS = 300`：不足时进入全文 `rejected`。
+- `DOCUMENT_MAX_TOKENS = 6000`：超过时默认完整进入全文 `review`，不切片、不截断。
+- `DOCUMENT_OVER_MAX_POLICY = "review"`：也可以明确改为 `reject` 或 `allow`。
+
+修改全文范围不会影响旧切片阈值；修改切片阈值也不会影响全文分流。
 
 如果后续训练固定使用 Qwen tokenizer，可设置：
 
@@ -147,7 +205,7 @@ TOKENIZER_NAME_OR_PATH = "/models/Qwen3-0.6B"
 PYTHONPATH=. python3 -m unittest discover -s tests -v
 ```
 
-测试覆盖：标题与 front matter、链接/图片、嵌套列表、表格、引用、代码排除、边界残片清理、保守相邻去重、站点模板、300 token 硬下限、嵌套 JSON key、无效 JSON 审计、accepted/review/rejected 分流。
+测试覆盖：标题与 front matter、链接/图片、嵌套列表、表格、引用、代码排除、智能软换行、边界残片清理、保守相邻去重、站点模板、300 token 硬下限、嵌套 JSON key、无效 JSON 审计、三种输出模式、全文长度分流与不截断保证。
 
 ## 明确边界
 
