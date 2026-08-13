@@ -1,5 +1,5 @@
 """
-直接运行的 Markdown JSONL 清洗入口。
+直接运行的多分片 Markdown JSONL 清洗入口。
 
 使用方式：
 1. 只修改下面“用户配置区”的变量。
@@ -9,10 +9,10 @@
 本脚本没有 CLI 参数，也不会调用任何大模型。
 """
 
-import json
 from pathlib import Path
 
-from cleaner import CleanerConfig, clean_jsonl
+from cleaner import BatchConfig, CleanerConfig, clean_jsonl_shards
+from cleaner.batch import BatchSummary, ShardResult
 from cleaner.config import (
     AssemblyConfig,
     ChunkConfig,
@@ -29,8 +29,9 @@ from cleaner.config import (
 
 PROJECT_DIR = Path(__file__).resolve().parent
 
-# 输入 JSONL。可以写绝对路径，也可以像下面这样写相对本文件的路径。
-INPUT_PATH = PROJECT_DIR / "examples" / "input.jsonl"
+# 输入目录及文件匹配规则。** 表示递归查找子目录。
+INPUT_DIR = PROJECT_DIR / "examples"
+INPUT_GLOB = "**/*.jsonl"
 
 # 支持嵌套键，例如 "data.markdown"、"payload.content"。
 MARKDOWN_KEY = "content"
@@ -39,6 +40,12 @@ URL_KEY = "url"         # 没有 URL 时仍可运行，但会跳过站点模板�
 TITLE_KEY = "title"     # 没有标题字段时使用 Markdown 中的第一个 H1/标题
 
 OUTPUT_DIR = PROJECT_DIR / "output"
+
+# 分片级多进程。近似 token 计数可从 4 开始；真实 tokenizer 建议先设为 1～2。
+MAX_WORKERS = 4
+SKIP_COMPLETED_SHARDS = True
+CONTINUE_ON_ERROR = True
+WRITE_SHARD_PREVIEWS = False
 
 # 片段长度使用近似中英混合 token 计数。若指定真实 tokenizer 路径，需安装 transformers。
 TOKENIZER_NAME_OR_PATH = None  # 例如 "/models/Qwen3-0.6B"
@@ -76,7 +83,7 @@ KEEP_HTML_VISIBLE_TEXT = True
 KEEP_IMAGE_ALT_TEXT = False
 
 # 同站点重复模板检测。数据量很小或 URL 不可靠时可设为 False。
-ENABLE_SITE_TEMPLATE_DETECTION = True
+ENABLE_SITE_TEMPLATE_DETECTION = False
 TEMPLATE_MIN_HOST_DOCUMENTS = 20
 TEMPLATE_MIN_DOCUMENTS = 5
 
@@ -88,7 +95,8 @@ PREVIEW_DOCUMENTS = 100
 # =========================== 配置装配与运行 ===========================
 
 CONFIG = CleanerConfig(
-    input_path=str(INPUT_PATH),
+    # 批处理时会为每个分片替换此占位路径。
+    input_path="__set_by_batch_runner__",
     input=InputConfig(
         markdown_key=MARKDOWN_KEY,
         id_key=ID_KEY,
@@ -157,14 +165,42 @@ CONFIG = CleanerConfig(
 
 
 def main() -> None:
-    summary = clean_jsonl(CONFIG)
-    print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
-    previews = []
-    if CONFIG.assembly.output_mode in {"fragment", "both"}:
-        previews.append(CONFIG.output.preview_path)
-    if CONFIG.assembly.output_mode in {"document", "both"}:
-        previews.append(CONFIG.output.document_preview_path)
-    print("\n完成。人工预览：%s" % "，".join(previews))
+    batch = BatchConfig(
+        input_dir=str(INPUT_DIR),
+        input_glob=INPUT_GLOB,
+        output_dir=str(OUTPUT_DIR),
+        max_workers=MAX_WORKERS,
+        skip_completed_shards=SKIP_COMPLETED_SHARDS,
+        continue_on_error=CONTINUE_ON_ERROR,
+        write_shard_previews=WRITE_SHARD_PREVIEWS,
+    )
+    print("输入目录：%s" % INPUT_DIR)
+    print("输出目录：%s" % OUTPUT_DIR)
+    print("输出模式：%s；进程数：%d" % (OUTPUT_MODE, MAX_WORKERS))
+    summary = clean_jsonl_shards(CONFIG, batch, on_result=_print_progress)
+    print(
+        "\n全部完成：发现 %d，成功 %d，跳过 %d，失败 %d，耗时 %.2f 秒"
+        % (
+            summary.discovered_shards,
+            summary.completed_shards,
+            summary.skipped_shards,
+            summary.failed_shards,
+            summary.elapsed_seconds,
+        )
+    )
+    print("批次统计：%s" % (OUTPUT_DIR / "metadata" / "batch_summary.json"))
+
+
+def _print_progress(result: ShardResult, summary: BatchSummary) -> None:
+    finished = summary.completed_shards + summary.skipped_shards + summary.failed_shards
+    detail = ""
+    if result.status == "failed":
+        detail = " (%s: %s)" % (result.error_type, result.error)
+    print(
+        "[%d/%d] %-9s %s%s"
+        % (finished, summary.discovered_shards, result.status, result.relative_path, detail),
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

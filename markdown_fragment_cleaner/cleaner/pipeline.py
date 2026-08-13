@@ -85,7 +85,8 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
 
     templates = TemplateIndex(config.templates)
     templates.fit(_iter_valid_documents(config, parser, normalizer))
-    templates.save(config.output.templates_path)
+    if config.templates.enabled:
+        templates.save(config.output.templates_path)
 
     summary = CleaningSummary()
     fragment_preview: List[Fragment] = []
@@ -244,9 +245,9 @@ def clean_jsonl(config: CleanerConfig) -> CleaningSummary:
                     )
 
     _write_statistics(config, summary, len(templates.entries))
-    if emit_fragments:
+    if emit_fragments and config.output.write_fragment_preview:
         _write_preview(config.output.preview_path, fragment_preview, summary)
-    if emit_documents:
+    if emit_documents and config.output.write_document_preview:
         _write_document_preview(config.output.document_preview_path, document_preview, summary)
     return summary
 
@@ -385,9 +386,12 @@ def _document_from_row(
     doc_id = _optional_path(row, config.input.id_key) if config.input.id_key else None
     url = _optional_path(row, config.input.url_key) if config.input.url_key else None
     title = _optional_path(row, config.input.title_key) if config.input.title_key else None
+    fallback_id = "row-%d" % row_number
+    if config.input.fallback_id_prefix:
+        fallback_id = "%s:row-%d" % (config.input.fallback_id_prefix, row_number)
     return parser.parse(
         markdown=markdown,
-        doc_id=str(doc_id) if doc_id not in {None, ""} else "row-%d" % row_number,
+        doc_id=str(doc_id) if doc_id not in {None, ""} else fallback_id,
         url=str(url) if url not in {None, ""} else "",
         title=str(title) if title not in {None, ""} else "",
         source_row=row_number,
@@ -539,25 +543,25 @@ def _one_line(value: Any) -> str:
 
 def _validate_output_paths(config: CleanerConfig) -> None:
     input_path = Path(config.input_path).expanduser().resolve()
-    paths = [config.output.templates_path, config.output.statistics_path]
+    paths = [config.output.statistics_path]
+    if config.templates.enabled:
+        paths.append(config.output.templates_path)
     if config.assembly.output_mode in {"fragment", "both"}:
         paths.extend(
-            [
-                config.output.accepted_path,
-                config.output.review_path,
-                config.output.rejected_path,
-                config.output.preview_path,
-            ]
+            [config.output.accepted_path, config.output.review_path, config.output.rejected_path]
         )
+        if config.output.write_fragment_preview:
+            paths.append(config.output.preview_path)
     if config.assembly.output_mode in {"document", "both"}:
         paths.extend(
             [
                 config.output.document_accepted_path,
                 config.output.document_review_path,
                 config.output.document_rejected_path,
-                config.output.document_preview_path,
             ]
         )
+        if config.output.write_document_preview:
+            paths.append(config.output.document_preview_path)
     resolved = [Path(path).expanduser().resolve() for path in paths]
     if input_path in resolved:
         raise ValueError("an output path must not overwrite the input JSONL")

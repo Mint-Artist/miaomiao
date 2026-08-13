@@ -1,6 +1,6 @@
 # Markdown Cleaner
 
-该目录是一套独立的、无大模型依赖的 Markdown 正文清洗器。它直接读取 JSONL 中某个字段的原始 Markdown，不要求上游先生成 `blocks`，也不需要使用 CLI 参数。清洗后既可以沿用原来的语义切片，也可以输出不切片的全文，或者同时生成两套结果。
+该目录是一套独立的、无大模型依赖的 Markdown 正文清洗器。它可用多个进程读取一组 JSONL 分片，并让每个输出分片保留输入的文件名和相对目录。清洗后既可以沿用原来的语义切片，也可以输出不切片的全文，或者同时生成两套结果。
 
 处理流程：
 
@@ -29,17 +29,27 @@ python3 -m pip install -r requirements.txt
 打开 [run_cleaning.py](run_cleaning.py)，修改文件顶部“用户配置区”：
 
 ```python
-INPUT_PATH = Path("/path/to/input.jsonl")
+INPUT_DIR = Path("/path/to/input_shards")
+INPUT_GLOB = "**/*.jsonl"
+OUTPUT_DIR = Path("/path/to/output_shards")
+
+# 一个进程负责一个完整分片
+MAX_WORKERS = 4
+SKIP_COMPLETED_SHARDS = True
+CONTINUE_ON_ERROR = True
+
 MARKDOWN_KEY = "data.markdown"
 ID_KEY = "doc_id"
 URL_KEY = "url"
 TITLE_KEY = "title"
-OUTPUT_DIR = Path("/path/to/output")
 
 # fragment：只输出旧切片；document：只输出全文；both：两套都输出
 OUTPUT_MODE = "both"
 DOCUMENT_MIN_TOKENS = 300
 DOCUMENT_MAX_TOKENS = 6000
+
+# 多分片默认关闭站点模板学习
+ENABLE_SITE_TEMPLATE_DETECTION = False
 ```
 
 然后直接运行：
@@ -48,7 +58,9 @@ DOCUMENT_MAX_TOKENS = 6000
 python3 run_cleaning.py
 ```
 
-`MARKDOWN_KEY` 等键支持点分隔的嵌套路径，例如 `payload.content`。ID、URL 或标题缺失不会中断：ID 会退化为 JSONL 行号，标题会退化为 Markdown 的首个 H1/标题；缺少 URL 时只跳过站点模板检测。
+`INPUT_GLOB = "**/*.jsonl"` 会递归查找所有 JSONL；如果只读取输入目录第一层，改为 `"*.jsonl"`。`MARKDOWN_KEY` 等键支持点分隔的嵌套路径，例如 `payload.content`。ID、URL 或标题缺失不会中断：ID 会退化为“相对分片名 + JSONL 行号”，标题会退化为 Markdown 的首个 H1/标题。
+
+多进程以分片为单位，一个分片只由一个 worker 写入。使用便宜的近似 token 计数时可先设 `MAX_WORKERS = 4`；如果配置真实 HuggingFace tokenizer，每个 worker 都会加载一份 tokenizer，建议从 1～2 个进程开始观察内存。
 
 ## 输出模式与文件
 
@@ -56,16 +68,27 @@ python3 run_cleaning.py
 - `OUTPUT_MODE = "document"`：每篇输入文档最多生成一条清洗后全文，不做切片、不截断。
 - `OUTPUT_MODE = "both"`：共享同一次解析、规范化、去重和 block 过滤，同时输出切片与全文。
 
-片段结果仍写在输出根目录：`accepted.jsonl`、`review.jsonl`、`rejected.jsonl` 和 `preview.md`。
+假设输入是 `news/part-001.jsonl`，输出会保持相同相对路径：
 
-全文结果单独写在 `documents/` 下：
+```text
+output/
+├── fragments/
+│   ├── accepted/news/part-001.jsonl
+│   ├── review/news/part-001.jsonl
+│   └── rejected/news/part-001.jsonl
+├── documents/
+│   ├── accepted/news/part-001.jsonl
+│   ├── review/news/part-001.jsonl
+│   └── rejected/news/part-001.jsonl
+└── metadata/
+    ├── statistics/news/part-001.json
+    ├── completed/news/part-001.done.json
+    └── batch_summary.json
+```
 
-- `documents/accepted.jsonl`：位于全文 token 范围内且没有软风险。
-- `documents/review.jsonl`：默认包含超过 6000 token 但仍保留完整内容的全文，以及其他软风险全文。
-- `documents/rejected.jsonl`：不足 300 token、清洗后为空或命中全文硬规则的数据。
-- `documents/preview.md`：前若干条 accepted/review 全文的可读预览。
+没有记录的 decision 分片也会创建为空文件，因此输入、accepted、review、rejected 可以稳定地一一对应。`WRITE_SHARD_PREVIEWS=False` 默认不为大量分片生成预览小文件；需要抽检时可改为 `True`。
 
-`templates.json` 和 `statistics.json` 是两种模式共享的模板审计与运行统计。
+每个分片成功后才会原子写入完成标记。`SKIP_COMPLETED_SHARDS=True` 时，只有输入大小、修改时间、清洗配置和全部输出都没变化才会跳过；修改输入或任一清洗参数后会自动重跑。某个分片失败时，`CONTINUE_ON_ERROR=True` 会继续其他分片，并把失败信息写入 `metadata/batch_summary.json`。
 
 片段输出继续采用“一条片段一行 JSONL”。主要字段包括：
 
@@ -162,7 +185,9 @@ AST 解析之后、模板检测和语义切片之前，会执行独立的文本�
 
 ## 模板检测
 
-模板检测会扫描 JSONL 两遍。第一遍按 host 统计规范化 block 的 document frequency，第二遍执行删除和切片。规范化只用于匹配，不会写回正文。
+多分片入口默认设置 `ENABLE_SITE_TEMPLATE_DETECTION=False`。关闭后不会消费模板学习的第一遍扫描，也不会为每个分片生成无意义的 `templates.json`；固定页眉页脚规则和其他正文清洗仍然生效。
+
+如果以后重新启用，模板检测会对每个分片单独扫描两遍：第一遍按 host 统计规范化 block 的 document frequency，第二遍执行删除和组装。它目前不会跨分片进行全局模板学习。
 
 以下内容才会被识别为模板：
 
@@ -205,7 +230,7 @@ TOKENIZER_NAME_OR_PATH = "/models/Qwen3-0.6B"
 PYTHONPATH=. python3 -m unittest discover -s tests -v
 ```
 
-测试覆盖：标题与 front matter、链接/图片、嵌套列表、表格、引用、代码排除、智能软换行、边界残片清理、保守相邻去重、站点模板、300 token 硬下限、嵌套 JSON key、无效 JSON 审计、三种输出模式、全文长度分流与不截断保证。
+测试覆盖：标题与 front matter、链接/图片、嵌套列表、表格、引用、代码排除、智能软换行、边界残片清理、保守相邻去重、站点模板、300 token 硬下限、嵌套 JSON key、无效 JSON 审计、三种输出模式、全文长度分流、多进程分片、相对路径保持和断点续跑。
 
 ## 明确边界
 

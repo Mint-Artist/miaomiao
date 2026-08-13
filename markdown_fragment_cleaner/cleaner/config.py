@@ -12,6 +12,7 @@ class InputConfig:
     id_key: Optional[str] = "doc_id"
     url_key: Optional[str] = "url"
     title_key: Optional[str] = "title"
+    fallback_id_prefix: str = ""
 
 
 @dataclass
@@ -156,6 +157,8 @@ class OutputConfig:
     document_rejected_path: str = "output/documents/rejected.jsonl"
     document_preview_path: str = "output/documents/preview.md"
     preview_documents: int = 100
+    write_fragment_preview: bool = True
+    write_document_preview: bool = True
 
 
 @dataclass
