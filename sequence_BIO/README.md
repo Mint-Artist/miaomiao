@@ -2,6 +2,8 @@
 
 按照 SELECT 论文的数据构造流程，将原始网页文本与教师大模型的 deletion-only 清洗文本对齐，验证样本，并生成 token 级 BIO 监督。
 
+服务器部署和运行步骤见 [`SERVER_RUN_GUIDE.md`](SERVER_RUN_GUIDE.md)。
+
 ## 论文规则
 
 - 使用附录 B Algorithm 1 的 longest-match-segments 算法。
