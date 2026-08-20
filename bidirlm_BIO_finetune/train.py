@@ -5,6 +5,7 @@ import json
 import math
 import os
 import random
+import shutil
 from contextlib import nullcontext
 from datetime import timedelta
 from pathlib import Path
@@ -52,6 +53,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--early-stopping-patience", type=int, default=3)
     parser.add_argument("--attention-implementation", default="eager")
+    parser.add_argument(
+        "--save-steps",
+        type=int,
+        default=100,
+        help="Save checkpoint-step-N every N optimizer updates; 0 disables it",
+    )
+    parser.add_argument(
+        "--save-total-limit",
+        type=int,
+        default=0,
+        help="Maximum step checkpoints to retain; 0 keeps all",
+    )
     parser.add_argument("--resume-from-checkpoint")
     parser.add_argument("--no-gradient-checkpointing", action="store_true")
     parser.add_argument("--no-fp16", action="store_true")
@@ -86,22 +99,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     train_dataset = BioJsonlDataset(args.train_file, max_length=args.max_length)
     validation_dataset = BioJsonlDataset(args.validation_file, max_length=args.max_length)
     collator = BioDataCollator(tokenizer.pad_token_id)
-    train_sampler = (
-        DistributedSampler(
-            train_dataset,
-            num_replicas=world_size,
-            rank=rank,
-            shuffle=True,
-            seed=args.seed,
-        )
-        if distributed
-        else None
+    train_sampler = DistributedSampler(
+        train_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True,
+        seed=args.seed,
     )
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.per_device_train_batch_size,
         sampler=train_sampler,
-        shuffle=train_sampler is None,
+        shuffle=False,
         collate_fn=collator,
         num_workers=args.num_workers,
         pin_memory=True,
@@ -151,6 +160,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     fp16 = not args.no_fp16
     scaler = torch.cuda.amp.GradScaler(enabled=fp16)
     start_epoch = 0
+    resume_batch_index = 0
+    resume_running_stats = (0.0, 0.0, 0.0, 0)
     global_step = 0
     best_validation_loss = float("inf")
     patience = 0
@@ -163,7 +174,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         optimizer.load_state_dict(state["optimizer"])
         scheduler.load_state_dict(state["scheduler"])
         scaler.load_state_dict(state["scaler"])
-        start_epoch = int(state["epoch"]) + 1
+        if "resume_epoch" in state:
+            start_epoch = int(state["resume_epoch"])
+            resume_batch_index = int(state.get("resume_batch_index", 0))
+            saved_world_size = int(state.get("world_size", world_size))
+            if resume_batch_index and saved_world_size != world_size:
+                raise ValueError(
+                    "a mid-epoch checkpoint must resume with the same world_size: "
+                    f"saved={saved_world_size}, current={world_size}"
+                )
+            if world_size == 1 and saved_world_size == 1:
+                resume_running_stats = (
+                    float(state.get("running_loss", 0.0)),
+                    float(state.get("running_classification_loss", 0.0)),
+                    float(state.get("running_transition_loss", 0.0)),
+                    int(state.get("running_batches", 0)),
+                )
+        else:
+            start_epoch = int(state["epoch"]) + 1
         global_step = int(state["global_step"])
         best_validation_loss = float(state.get("best_validation_loss", float("inf")))
         patience = int(state.get("patience", 0))
@@ -193,14 +221,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(json.dumps(run_config, ensure_ascii=False, indent=2), flush=True)
 
     for epoch in range(start_epoch, args.epochs):
-        if train_sampler is not None:
-            train_sampler.set_epoch(epoch)
+        train_sampler.set_epoch(epoch)
         model.train()
         optimizer.zero_grad(set_to_none=True)
-        running_loss = 0.0
-        running_cls = 0.0
-        running_tr = 0.0
+        if epoch == start_epoch and resume_batch_index:
+            running_loss, running_cls, running_tr, running_batches = (
+                resume_running_stats
+            )
+        else:
+            running_loss = 0.0
+            running_cls = 0.0
+            running_tr = 0.0
+            running_batches = 0
         for batch_index, batch in enumerate(train_loader):
+            if epoch == start_epoch and batch_index < resume_batch_index:
+                continue
             tensors = move_batch(batch, device)
             group_start = (
                 batch_index // args.gradient_accumulation_steps
@@ -225,6 +260,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             running_loss += float(output["loss"].detach())
             running_cls += float(output["classification_loss"])
             running_tr += float(output["transition_loss"])
+            running_batches += 1
             if should_update:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(trainable_parameters, args.max_grad_norm)
@@ -233,9 +269,47 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
                 global_step += 1
+                should_save_step = (
+                    args.save_steps > 0 and global_step % args.save_steps == 0
+                )
+                if should_save_step:
+                    if distributed:
+                        dist.barrier()
+                    if is_main:
+                        next_epoch, next_batch_index = next_training_position(
+                            epoch, batch_index, len(train_loader)
+                        )
+                        checkpoint_dir = (
+                            Path(args.output_dir)
+                            / f"checkpoint-step-{global_step:08d}"
+                        )
+                        save_training_checkpoint(
+                            checkpoint_dir,
+                            model=unwrapped,
+                            tokenizer=tokenizer,
+                            optimizer=optimizer,
+                            scheduler=scheduler,
+                            scaler=scaler,
+                            epoch=epoch,
+                            global_step=global_step,
+                            best_validation_loss=best_validation_loss,
+                            patience=patience,
+                            resume_epoch=next_epoch,
+                            resume_batch_index=next_batch_index,
+                            running_loss=running_loss,
+                            running_classification_loss=running_cls,
+                            running_transition_loss=running_tr,
+                            running_batches=running_batches,
+                            world_size=world_size,
+                        )
+                        prune_step_checkpoints(
+                            Path(args.output_dir), args.save_total_limit
+                        )
+                    if distributed:
+                        dist.barrier()
 
         train_stats = torch.tensor(
-            [running_loss, running_cls, running_tr, float(len(train_loader))],
+            [running_loss, running_cls, running_tr, float(running_batches)],
             dtype=torch.float64,
             device=device,
         )
@@ -280,18 +354,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ) as stream:
                 stream.write(json.dumps(record, ensure_ascii=False) + "\n")
             last_dir = Path(args.output_dir) / "last"
-            unwrapped.save_artifacts(last_dir, tokenizer)
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "global_step": global_step,
-                    "best_validation_loss": best_validation_loss,
-                    "patience": patience,
-                    "optimizer": optimizer.state_dict(),
-                    "scheduler": scheduler.state_dict(),
-                    "scaler": scaler.state_dict(),
-                },
-                last_dir / "trainer_state.pt",
+            save_training_checkpoint(
+                last_dir,
+                model=unwrapped,
+                tokenizer=tokenizer,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                epoch=epoch,
+                global_step=global_step,
+                best_validation_loss=best_validation_loss,
+                patience=patience,
+                resume_epoch=epoch + 1,
+                resume_batch_index=0,
+                running_loss=0.0,
+                running_classification_loss=0.0,
+                running_transition_loss=0.0,
+                running_batches=0,
+                world_size=world_size,
             )
             should_stop = patience >= args.early_stopping_patience
         else:
@@ -348,6 +428,75 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--min-learning-rate-ratio must be in [0, 1]")
     if args.early_stopping_patience < 1:
         raise ValueError("--early-stopping-patience must be at least 1")
+    if args.save_steps < 0:
+        raise ValueError("--save-steps must be non-negative")
+    if args.save_total_limit < 0:
+        raise ValueError("--save-total-limit must be non-negative")
+
+
+def next_training_position(
+    epoch: int, batch_index: int, batches_in_epoch: int
+) -> tuple[int, int]:
+    if batch_index + 1 >= batches_in_epoch:
+        return epoch + 1, 0
+    return epoch, batch_index + 1
+
+
+def save_training_checkpoint(
+    checkpoint_dir: Path,
+    *,
+    model: SelectBidirLM,
+    tokenizer: Any,
+    optimizer: torch.optim.Optimizer,
+    scheduler: LambdaLR,
+    scaler: torch.cuda.amp.GradScaler,
+    epoch: int,
+    global_step: int,
+    best_validation_loss: float,
+    patience: int,
+    resume_epoch: int,
+    resume_batch_index: int,
+    running_loss: float,
+    running_classification_loss: float,
+    running_transition_loss: float,
+    running_batches: int,
+    world_size: int,
+) -> None:
+    model.save_artifacts(checkpoint_dir, tokenizer)
+    torch.save(
+        {
+            "epoch": epoch,
+            "global_step": global_step,
+            "best_validation_loss": best_validation_loss,
+            "patience": patience,
+            "resume_epoch": resume_epoch,
+            "resume_batch_index": resume_batch_index,
+            "running_loss": running_loss,
+            "running_classification_loss": running_classification_loss,
+            "running_transition_loss": running_transition_loss,
+            "running_batches": running_batches,
+            "world_size": world_size,
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
+            "scaler": scaler.state_dict(),
+        },
+        checkpoint_dir / "trainer_state.pt",
+    )
+
+
+def prune_step_checkpoints(output_dir: Path, save_total_limit: int) -> None:
+    if save_total_limit == 0:
+        return
+    checkpoints = sorted(
+        (
+            path
+            for path in output_dir.glob("checkpoint-step-*")
+            if path.is_dir() and path.name.removeprefix("checkpoint-step-").isdigit()
+        ),
+        key=lambda path: int(path.name.removeprefix("checkpoint-step-")),
+    )
+    for checkpoint in checkpoints[:-save_total_limit]:
+        shutil.rmtree(checkpoint)
 
 
 @torch.no_grad()

@@ -81,6 +81,8 @@ CUDA_VISIBLE_DEVICES=0 python -m bidirlm_BIO_finetune.train \
   --max-length 8192 \
   --per-device-train-batch-size 1 \
   --gradient-accumulation-steps 16 \
+  --save-steps 100 \
+  --save-total-limit 10 \
   --epochs 8
 ```
 
@@ -143,7 +145,19 @@ run_config.json   最终解析后的配置、数据量和可训练参数量
 metrics.jsonl     每个 epoch 的训练、验证指标
 best/             验证损失最优的模型
 last/             最近一个 epoch 的模型和 trainer_state.pt
+checkpoint-step-00000100/ 第 100 个 optimizer step 的完整可恢复 checkpoint
+checkpoint-step-00000200/ 第 200 个 optimizer step 的完整可恢复 checkpoint
 ```
+
+默认每 100 个 optimizer step 保存一次：
+
+```text
+--save-steps 100
+```
+
+`--save-steps 0` 可以关闭 step checkpoint。`--save-total-limit 0` 表示全部保留；
+设置为 10 时只保留最近 10 个 `checkpoint-step-*`，不会删除 `best/` 和 `last/`。
+全参数微调的 checkpoint 较大，应根据磁盘空间设置保留数量。
 
 继续训练：
 
@@ -158,6 +172,19 @@ CUDA_VISIBLE_DEVICES=0 python -m bidirlm_BIO_finetune.train \
 ```
 
 恢复时模型结构以 checkpoint 中的 `select_config.json` 为准。
+也可以从任意 step checkpoint 恢复，程序会恢复 optimizer、scheduler、FP16
+scaler 和 epoch 内 batch 位置。中途 step checkpoint 必须使用与保存时相同的
+GPU 数量恢复：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m bidirlm_BIO_finetune.train \
+  --model-name-or-path /绝对路径/BidirLM-0.6B-Base \
+  --train-file data/bio_split/train.jsonl \
+  --validation-file data/bio_split/validation.jsonl \
+  --output-dir outputs/bidirlm_lora_single \
+  --resume-from-checkpoint \
+    outputs/bidirlm_lora_single/checkpoint-step-00000200
+```
 
 ## 测试集预测与评估
 
@@ -171,6 +198,40 @@ CUDA_VISIBLE_DEVICES=0 python -m bidirlm_BIO_finetune.predict \
 
 程序输出 token accuracy、三标签 macro-F1、保留/删除二分类 F1 和严格匹配的
 BIO span-F1。`test_predictions.jsonl` 保存 Viterbi 后的标签序列。
+
+上面的最小 SFT 测试文件没有原文和字符 offset，因此输出同时提供 tokenizer
+decode 得到的 `decoded_input_text`、`predicted_decoded_segments` 和
+`predicted_decoded_text`。decode 可能规范化空格和换行。
+
+如果希望查看严格保持原文格式的文本，预测时传入 `sequence_BIO` 生成的完整
+`accepted.audit.jsonl`。程序会自动识别格式，也可以显式指定：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m bidirlm_BIO_finetune.predict \
+  --checkpoint outputs/bidirlm_lora_single/best \
+  --base-model-name-or-path /绝对路径/BidirLM-0.6B-Base \
+  --input data/test.accepted.audit.jsonl \
+  --input-format audit \
+  --output outputs/bidirlm_lora_single/test_text_predictions.jsonl
+```
+
+audit 预测结果包含：
+
+```text
+source_text                    完整原文
+predicted_labels               原始 Viterbi 标签，不做 BIO 修复
+predicted_bio_tags             原始 O/B/I 序列
+predicted_token_spans          预测保留的 token 区间
+predicted_retained_segments    token/字符区间、起始标签和原文片段
+predicted_refined_text         按 offset_mapping 从原文提取后拼接的清洗文本
+gold_retained_segments         Gold 标签对应的原文片段
+gold_refined_text_from_labels  Gold token 标签还原的文本
+teacher_refined_text           教师模型的原始清洗文本
+adjusted_refined_text          对齐算法调整后的教师文本
+```
+
+如果某个保留片段由 `I` 而不是 `B` 开始，`starts_with_tag` 会保留为 `I`，方便
+排查；当前版本不会改变标签，也不会进行断句或句子边界后处理。
 
 ## 显存不足时
 
