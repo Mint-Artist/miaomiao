@@ -17,16 +17,28 @@ LABEL_TO_TAG = {-100: "IGN", 0: "O", 1: "B", 2: "I"}
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate a SELECT BidirLM checkpoint")
+    parser = argparse.ArgumentParser(
+        description="Run inference or evaluation with a SELECT BidirLM checkpoint"
+    )
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--base-model-name-or-path")
     parser.add_argument(
         "--input-format",
-        choices=("auto", "sft", "audit"),
+        choices=("auto", "raw", "sft", "audit"),
         default="auto",
-        help="auto detects minimal SFT or accepted audit JSONL",
+        help="auto detects raw text, minimal SFT, or accepted audit JSONL",
+    )
+    parser.add_argument(
+        "--text-field",
+        default="source_text",
+        help="text field used by raw JSONL input (default: source_text)",
+    )
+    parser.add_argument(
+        "--id-field",
+        default="id",
+        help="ID field used by raw JSONL input (default: id)",
     )
     parser.add_argument("--max-length", type=int, default=8192)
     parser.add_argument("--batch-size", type=int, default=1)
@@ -41,6 +53,9 @@ class PredictionJsonlDataset(Dataset):
         *,
         input_format: str = "auto",
         max_length: int = 8192,
+        tokenizer: Any = None,
+        text_field: str = "source_text",
+        id_field: str = "id",
     ):
         self.path = Path(path)
         self.records: List[Dict[str, Any]] = []
@@ -55,6 +70,9 @@ class PredictionJsonlDataset(Dataset):
                         line_number=line_number,
                         input_format=input_format,
                         max_length=max_length,
+                        tokenizer=tokenizer,
+                        text_field=text_field,
+                        id_field=id_field,
                     )
                 )
         if not self.records:
@@ -83,17 +101,27 @@ def normalize_prediction_record(
     line_number: int,
     input_format: str,
     max_length: int,
+    tokenizer: Any = None,
+    text_field: str = "source_text",
+    id_field: str = "id",
 ) -> Dict[str, Any]:
-    if not isinstance(value, Mapping):
-        raise TypeError(f"line {line_number}: JSONL row must be an object")
     detected_format = input_format
     if input_format == "auto":
-        detected_format = (
-            "audit"
-            if isinstance(value.get("tokenization"), Mapping)
-            and isinstance(value.get("supervision"), Mapping)
-            else "sft"
-        )
+        if isinstance(value, str):
+            detected_format = "raw"
+        elif not isinstance(value, Mapping):
+            raise TypeError(
+                f"line {line_number}: JSONL row must be an object or a JSON string"
+            )
+        elif "tokenization" in value or "supervision" in value:
+            detected_format = "audit"
+        elif any(field in value for field in ("input_ids", "attention_mask", "labels")):
+            detected_format = "sft"
+        else:
+            detected_format = "raw"
+
+    if detected_format != "raw" and not isinstance(value, Mapping):
+        raise TypeError(f"line {line_number}: {detected_format} row must be an object")
 
     if detected_format == "audit":
         tokenization = value.get("tokenization")
@@ -144,6 +172,7 @@ def normalize_prediction_record(
                 "teacher_refined_text", value.get("refined_text")
             ),
             "adjusted_refined_text": value.get("adjusted_refined_text"),
+            "has_gold": True,
         }
     elif detected_format == "sft":
         record = validate_record(
@@ -156,11 +185,109 @@ def normalize_prediction_record(
             "offset_mapping": value.get("offset_mapping"),
             "teacher_refined_text": value.get("teacher_refined_text"),
             "adjusted_refined_text": value.get("adjusted_refined_text"),
+            "has_gold": True,
         }
+    elif detected_format == "raw":
+        record, metadata = tokenize_raw_prediction_record(
+            value,
+            line_number=line_number,
+            max_length=max_length,
+            tokenizer=tokenizer,
+            text_field=text_field,
+            id_field=id_field,
+        )
     else:
         raise ValueError(f"unsupported input format: {detected_format}")
     record["prediction_metadata"] = metadata
     return record
+
+
+def tokenize_raw_prediction_record(
+    value: Any,
+    *,
+    line_number: int,
+    max_length: int,
+    tokenizer: Any,
+    text_field: str,
+    id_field: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    if tokenizer is None:
+        raise ValueError("raw prediction input requires a tokenizer")
+    if isinstance(value, str):
+        source_text = value
+        sample_id: Any = f"line-{line_number}"
+    elif isinstance(value, Mapping):
+        source_text = value.get(text_field)
+        sample_id = value.get(id_field) or f"line-{line_number}"
+        if not isinstance(source_text, str):
+            raise TypeError(
+                f"line {line_number}: raw text field {text_field!r} must be a string"
+            )
+    else:
+        raise TypeError(
+            f"line {line_number}: raw JSONL row must be an object or a JSON string"
+        )
+    if not source_text:
+        raise ValueError(f"line {line_number}: raw text must not be empty")
+
+    try:
+        encoded = tokenizer(
+            source_text,
+            add_special_tokens=True,
+            truncation=False,
+            return_attention_mask=True,
+            return_offsets_mapping=True,
+        )
+    except (NotImplementedError, TypeError) as exc:
+        raise RuntimeError(
+            "raw prediction requires a fast tokenizer with offset_mapping support"
+        ) from exc
+    input_ids = [int(item) for item in encoded["input_ids"]]
+    attention_mask = [int(item) for item in encoded["attention_mask"]]
+    raw_offsets = encoded.get("offset_mapping")
+    if not isinstance(raw_offsets, (list, tuple)):
+        raise RuntimeError(
+            "raw prediction tokenizer did not return an offset_mapping sequence"
+        )
+    offset_mapping: List[List[int]] = []
+    for offset in raw_offsets:
+        if not isinstance(offset, (list, tuple)) or len(offset) != 2:
+            raise RuntimeError("tokenizer returned an invalid offset_mapping item")
+        start, end = int(offset[0]), int(offset[1])
+        if start < 0 or end < start or end > len(source_text):
+            raise RuntimeError(
+                f"tokenizer offset [{start}, {end}] is outside raw source text"
+            )
+        offset_mapping.append([start, end])
+    if len(offset_mapping) != len(input_ids):
+        raise RuntimeError("tokenizer offset_mapping length differs from input_ids")
+
+    # Labels are used only as a valid-token mask by the existing collator and
+    # Viterbi path. They are never emitted as Gold or included in metrics.
+    placeholder_labels = [
+        0 if mask and end > start else -100
+        for mask, (start, end) in zip(attention_mask, offset_mapping)
+    ]
+    record = validate_record(
+        {
+            "id": sample_id,
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": placeholder_labels,
+        },
+        line_number=line_number,
+        max_length=max_length,
+    )
+    metadata = {
+        "input_format": "raw",
+        "sequence_length": len(input_ids),
+        "source_text": source_text,
+        "offset_mapping": offset_mapping,
+        "teacher_refined_text": None,
+        "adjusted_refined_text": None,
+        "has_gold": False,
+    }
+    return record, metadata
 
 
 @torch.no_grad()
@@ -182,7 +309,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise RuntimeError("install bidirlm_BIO_finetune/requirements.txt") from exc
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
     dataset = PredictionJsonlDataset(
-        args.input, input_format=args.input_format, max_length=args.max_length
+        args.input,
+        input_format=args.input_format,
+        max_length=args.max_length,
+        tokenizer=tokenizer,
+        text_field=args.text_field,
+        id_field=args.id_field,
     )
     loader = DataLoader(
         dataset,
@@ -205,8 +337,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             predictions = viterbi_decode_batch(
                 result["classification_logits"], result["transition_logits"], valid_mask
             )
-            all_predictions.append(predictions.cpu())
-            all_labels.append(labels.cpu())
             for sample_id, predicted, gold, ids, metadata in zip(
                 batch["ids"],
                 predictions.cpu(),
@@ -215,19 +345,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 batch["metadata"],
             ):
                 length = int(metadata["sequence_length"])
+                predicted_labels = predicted[:length].tolist()
+                gold_labels = gold[:length].tolist() if metadata["has_gold"] else None
+                if gold_labels is not None:
+                    all_predictions.append(predicted[:length].unsqueeze(0).cpu())
+                    all_labels.append(gold[:length].unsqueeze(0).cpu())
                 output_record = build_prediction_output(
                     sample_id=sample_id,
                     input_ids=ids[:length].tolist(),
-                    predicted_labels=predicted[:length].tolist(),
-                    gold_labels=gold[:length].tolist(),
+                    predicted_labels=predicted_labels,
+                    gold_labels=gold_labels,
                     metadata=metadata,
                     tokenizer=tokenizer,
                 )
                 stream.write(json.dumps(output_record, ensure_ascii=False) + "\n")
-    metrics = compute_bio_metrics(
-        pad_and_cat(all_predictions), pad_and_cat(all_labels)
-    )
-    print(json.dumps(metrics, ensure_ascii=False, indent=2))
+    if all_labels:
+        summary = compute_bio_metrics(
+            pad_and_cat(all_predictions), pad_and_cat(all_labels)
+        )
+        summary["evaluated_samples"] = len(all_labels)
+    else:
+        summary = {
+            "prediction_samples": len(dataset),
+            "evaluated_samples": 0,
+            "message": "raw inference completed; no Gold labels, metrics skipped",
+        }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -236,12 +379,12 @@ def build_prediction_output(
     sample_id: Any,
     input_ids: Sequence[int],
     predicted_labels: Sequence[int],
-    gold_labels: Sequence[int],
+    gold_labels: Optional[Sequence[int]],
     metadata: Mapping[str, Any],
     tokenizer: Any,
 ) -> Dict[str, Any]:
     predicted_spans = labels_to_token_spans(predicted_labels)
-    gold_spans = labels_to_token_spans(gold_labels)
+    gold_spans = labels_to_token_spans(gold_labels) if gold_labels is not None else []
     predicted_decoded_segments = [
         tokenizer.decode(input_ids[start:end], skip_special_tokens=True)
         for start, end in predicted_spans
@@ -255,27 +398,29 @@ def build_prediction_output(
         "input_format": metadata.get("input_format"),
         "predicted_labels": list(predicted_labels),
         "predicted_bio_tags": [LABEL_TO_TAG[int(item)] for item in predicted_labels],
-        "gold_labels": list(gold_labels),
-        "gold_bio_tags": [LABEL_TO_TAG[int(item)] for item in gold_labels],
         "predicted_token_spans": [list(span) for span in predicted_spans],
-        "gold_token_spans": [list(span) for span in gold_spans],
         "decoded_input_text": tokenizer.decode(
             input_ids, skip_special_tokens=True
         ),
         "predicted_decoded_segments": predicted_decoded_segments,
         "predicted_decoded_text": "".join(predicted_decoded_segments),
-        "gold_decoded_segments": gold_decoded_segments,
-        "gold_decoded_text": "".join(gold_decoded_segments),
     }
+    if gold_labels is not None:
+        output.update(
+            {
+                "gold_labels": list(gold_labels),
+                "gold_bio_tags": [LABEL_TO_TAG[int(item)] for item in gold_labels],
+                "gold_token_spans": [list(span) for span in gold_spans],
+                "gold_decoded_segments": gold_decoded_segments,
+                "gold_decoded_text": "".join(gold_decoded_segments),
+            }
+        )
 
     source_text = metadata.get("source_text")
     offset_mapping = metadata.get("offset_mapping")
     if isinstance(source_text, str) and isinstance(offset_mapping, list):
         predicted_text_segments = token_spans_to_text_segments(
             source_text, offset_mapping, predicted_spans, predicted_labels
-        )
-        gold_text_segments = token_spans_to_text_segments(
-            source_text, offset_mapping, gold_spans, gold_labels
         )
         output.update(
             {
@@ -284,14 +429,22 @@ def build_prediction_output(
                 "predicted_refined_text": "".join(
                     segment["text"] for segment in predicted_text_segments
                 ),
-                "gold_retained_segments": gold_text_segments,
-                "gold_refined_text_from_labels": "".join(
-                    segment["text"] for segment in gold_text_segments
-                ),
-                "teacher_refined_text": metadata.get("teacher_refined_text"),
-                "adjusted_refined_text": metadata.get("adjusted_refined_text"),
             }
         )
+        if gold_labels is not None:
+            gold_text_segments = token_spans_to_text_segments(
+                source_text, offset_mapping, gold_spans, gold_labels
+            )
+            output.update(
+                {
+                    "gold_retained_segments": gold_text_segments,
+                    "gold_refined_text_from_labels": "".join(
+                        segment["text"] for segment in gold_text_segments
+                    ),
+                    "teacher_refined_text": metadata.get("teacher_refined_text"),
+                    "adjusted_refined_text": metadata.get("adjusted_refined_text"),
+                }
+            )
     return output
 
 

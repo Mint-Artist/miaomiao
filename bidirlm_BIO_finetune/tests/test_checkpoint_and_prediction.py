@@ -20,6 +20,27 @@ from bidirlm_BIO_finetune.train import (
 
 
 class FakeTokenizer:
+    def __call__(
+        self,
+        text,
+        *,
+        add_special_tokens,
+        truncation,
+        return_attention_mask,
+        return_offsets_mapping,
+    ):
+        assert add_special_tokens
+        assert not truncation
+        assert return_attention_mask
+        assert return_offsets_mapping
+        return {
+            "input_ids": [99] + list(range(1, len(text) + 1)) + [100],
+            "attention_mask": [1] * (len(text) + 2),
+            "offset_mapping": [[0, 0]]
+            + [[index, index + 1] for index in range(len(text))]
+            + [[0, 0]],
+        }
+
     def decode(self, input_ids, skip_special_tokens=True):
         return "".join(chr(96 + int(item)) for item in input_ids)
 
@@ -89,6 +110,44 @@ class CheckpointTests(unittest.TestCase):
 
 
 class PredictionOutputTests(unittest.TestCase):
+    def test_raw_jsonl_is_tokenized_without_gold_labels(self):
+        raw = {"document_id": "raw-1", "content": "甲乙\n丙"}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "raw.jsonl"
+            path.write_text(
+                json.dumps(raw, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            dataset = PredictionJsonlDataset(
+                path,
+                input_format="raw",
+                max_length=8,
+                tokenizer=FakeTokenizer(),
+                text_field="content",
+                id_field="document_id",
+            )
+            record = dataset[0]
+        self.assertEqual(record["id"], "raw-1")
+        self.assertEqual(record["input_ids"], [99, 1, 2, 3, 4, 100])
+        self.assertEqual(record["labels"], [-100, 0, 0, 0, 0, -100])
+        self.assertEqual(record["prediction_metadata"]["source_text"], "甲乙\n丙")
+        self.assertFalse(record["prediction_metadata"]["has_gold"])
+
+    def test_auto_detects_json_string_as_raw_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "raw.jsonl"
+            path.write_text(
+                json.dumps("甲乙", ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            dataset = PredictionJsonlDataset(
+                path,
+                input_format="auto",
+                max_length=8,
+                tokenizer=FakeTokenizer(),
+            )
+            record = dataset[0]
+        self.assertEqual(record["id"], "line-1")
+        self.assertEqual(record["prediction_metadata"]["input_format"], "raw")
+
     def test_audit_jsonl_is_flattened_for_prediction(self):
         audit = {
             "id": "doc-1",
@@ -139,6 +198,24 @@ class PredictionOutputTests(unittest.TestCase):
         self.assertEqual(
             output["predicted_retained_segments"][1]["starts_with_tag"], "I"
         )
+
+    def test_raw_prediction_output_omits_gold_fields(self):
+        output = build_prediction_output(
+            sample_id="raw-1",
+            input_ids=[1, 2, 3],
+            predicted_labels=[1, 2, 0],
+            gold_labels=None,
+            metadata={
+                "input_format": "raw",
+                "source_text": "甲乙丙",
+                "offset_mapping": [[0, 1], [1, 2], [2, 3]],
+            },
+            tokenizer=FakeTokenizer(),
+        )
+        self.assertEqual(output["predicted_refined_text"], "甲乙")
+        self.assertNotIn("gold_labels", output)
+        self.assertNotIn("gold_retained_segments", output)
+        self.assertNotIn("teacher_refined_text", output)
 
 
 if __name__ == "__main__":

@@ -233,6 +233,67 @@ adjusted_refined_text          对齐算法调整后的教师文本
 如果某个保留片段由 `I` 而不是 `B` 开始，`starts_with_tag` 会保留为 `I`，方便
 排查；当前版本不会改变标签，也不会进行断句或句子边界后处理。
 
+## 纯文本推理
+
+没有 Gold BIO 标签时，使用 `raw` 模式。输入仍然是 JSONL，一行表示一篇
+网页；默认字段为 `id` 和 `source_text`：
+
+```jsonl
+{"id":"web-001","source_text":"首页导航\n第一段网页正文。\n广告\n第二段网页正文。"}
+{"id":"web-002","source_text":"另一篇需要清洗的网页文本。"}
+```
+
+JSONL 文件中的换行写成 `\n`，`json.loads` 后会还原为字符串中的真实换行。
+也支持每行直接写一个 JSON 字符串，此时 ID 自动生成为 `line-行号`：
+
+```jsonl
+"第一篇网页文本"
+"第二篇网页文本"
+```
+
+运行：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m bidirlm_BIO_finetune.predict \
+  --checkpoint outputs/bidirlm_lora_single/best \
+  --base-model-name-or-path /绝对路径/BidirLM-0.6B-Base \
+  --input data/raw_inference.jsonl \
+  --input-format raw \
+  --output outputs/bidirlm_lora_single/raw_predictions.jsonl
+```
+
+脚本使用 checkpoint 中保存的 tokenizer 自动生成 `input_ids`、
+`attention_mask` 和 `offset_mapping`，然后执行两个 head 和 Viterbi 解码。
+raw 输出包含：
+
+```text
+source_text                    完整原文
+predicted_labels               数字标签序列（O=0、B=1、I=2、IGN=-100）
+predicted_bio_tags             O/B/I/IGN 标签序列
+predicted_token_spans          预测保留的 token 区间
+predicted_retained_segments    每个保留片段及 token/字符区间
+predicted_refined_text         从原文精确提取并拼接的清洗文本
+```
+
+raw 模式没有 `gold_*` 字段，也不会计算 accuracy/F1。控制台会显示完成的预测
+样本数和 `evaluated_samples: 0`。
+
+如果输入字段名不同，例如 `document_id` 和 `content`：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m bidirlm_BIO_finetune.predict \
+  --checkpoint outputs/bidirlm_lora_single/best \
+  --base-model-name-or-path /绝对路径/BidirLM-0.6B-Base \
+  --input data/raw_inference.jsonl \
+  --input-format raw \
+  --id-field document_id \
+  --text-field content \
+  --output outputs/bidirlm_lora_single/raw_predictions.jsonl
+```
+
+`--input-format auto` 也能识别 raw JSONL。超过 `--max-length` 的文本会明确
+报错，不会静默截断；应先拆分或过滤长文本后再推理。
+
 ## 显存不足时
 
 依次尝试：
