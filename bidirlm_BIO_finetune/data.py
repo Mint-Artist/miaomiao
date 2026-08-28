@@ -7,26 +7,27 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 import torch
 from torch.utils.data import Dataset
 
+from .constants import (
+    ATTENTION_MASK_KEY,
+    DEFAULT_MAX_LENGTH,
+    IGNORE_INDEX,
+    INPUT_IDS_KEY,
+    LABELS_KEY,
+    SUPPORTED_LABEL_IDS,
+)
+
+REQUIRED_SEQUENCE_FIELDS = (INPUT_IDS_KEY, ATTENTION_MASK_KEY, LABELS_KEY)
+DEFAULT_PADDING_MULTIPLE = 8
+
 
 class BioJsonlDataset(Dataset):
-    """Load the minimal JSONL emitted by ``sequence_BIO``.
+    """Load validated, pre-tokenized BIO examples from JSONL."""
 
-    Each non-empty row must contain equally sized ``input_ids``,
-    ``attention_mask`` and ``labels`` lists. Long samples are rejected instead
-    of silently truncated because truncation can split a retained BIO span.
-    """
-
-    def __init__(self, path: str | Path, *, max_length: Optional[int] = 8192):
+    def __init__(
+        self, path: str | Path, *, max_length: Optional[int] = DEFAULT_MAX_LENGTH
+    ):
         self.path = Path(path)
-        self.records: List[Dict[str, Any]] = []
-        with self.path.open("r", encoding="utf-8") as stream:
-            for line_number, line in enumerate(stream, start=1):
-                if not line.strip():
-                    continue
-                value = json.loads(line)
-                self.records.append(
-                    validate_record(value, line_number=line_number, max_length=max_length)
-                )
+        self.records = _load_records(self.path, max_length=max_length)
         if not self.records:
             raise ValueError(f"no training records found in {self.path}")
 
@@ -37,70 +38,158 @@ class BioJsonlDataset(Dataset):
         return self.records[index]
 
 
+def _load_records(path: Path, *, max_length: Optional[int]) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, start=1):
+            if not line.strip():
+                continue
+            records.append(
+                validate_record(
+                    json.loads(line),
+                    line_number=line_number,
+                    max_length=max_length,
+                )
+            )
+    return records
+
+
 def validate_record(
     value: Any,
     *,
     line_number: int,
     max_length: Optional[int],
 ) -> Dict[str, Any]:
+    """Validate one dataset row and normalize sequence values to integers."""
+
     if not isinstance(value, Mapping):
         raise TypeError(f"line {line_number}: each JSONL row must be an object")
+
     result = dict(value)
-    for field in ("input_ids", "attention_mask", "labels"):
-        if field not in result or not isinstance(result[field], list):
-            raise TypeError(f"line {line_number}: {field!r} must be a list")
-    lengths = {len(result[field]) for field in ("input_ids", "attention_mask", "labels")}
-    if len(lengths) != 1:
+    sequences = {
+        field: _require_list(result, field, line_number)
+        for field in REQUIRED_SEQUENCE_FIELDS
+    }
+    sequence_lengths = {len(sequence) for sequence in sequences.values()}
+    if len(sequence_lengths) != 1:
         raise ValueError(
             f"line {line_number}: input_ids, attention_mask and labels lengths differ"
         )
-    sequence_length = len(result["input_ids"])
+
+    sequence_length = len(sequences.get(INPUT_IDS_KEY, []))
+    _validate_sequence_length(sequence_length, max_length, line_number)
+    normalized_labels = [int(item) for item in sequences.get(LABELS_KEY, [])]
+    _validate_labels(normalized_labels, line_number)
+
+    result.update(
+        {
+            INPUT_IDS_KEY: [int(item) for item in sequences.get(INPUT_IDS_KEY, [])],
+            ATTENTION_MASK_KEY: [
+                int(item) for item in sequences.get(ATTENTION_MASK_KEY, [])
+            ],
+            LABELS_KEY: normalized_labels,
+        }
+    )
+    return result
+
+
+def _require_list(record: Mapping[str, Any], field: str, line_number: int) -> List[Any]:
+    value = record.get(field)
+    if not isinstance(value, list):
+        raise TypeError(f"line {line_number}: {field!r} must be a list")
+    return value
+
+
+def _validate_sequence_length(
+    sequence_length: int,
+    max_length: Optional[int],
+    line_number: int,
+) -> None:
     if sequence_length == 0:
         raise ValueError(f"line {line_number}: empty token sequence")
     if max_length is not None and sequence_length > max_length:
         raise ValueError(
             f"line {line_number}: sequence length {sequence_length} exceeds "
-            f"max_length={max_length}; rebuild or filter the BIO data instead of truncating"
+            f"max_length={max_length}; rebuild or filter the BIO data instead "
+            "of truncating"
         )
-    invalid_labels = sorted({int(item) for item in result["labels"]} - {-100, 0, 1, 2})
+
+
+def _validate_labels(labels: Sequence[int], line_number: int) -> None:
+    invalid_labels = sorted(set(labels) - SUPPORTED_LABEL_IDS)
     if invalid_labels:
         raise ValueError(f"line {line_number}: unsupported labels {invalid_labels}")
-    if not any(int(item) != -100 for item in result["labels"]):
+    if not any(label != IGNORE_INDEX for label in labels):
         raise ValueError(f"line {line_number}: all labels are ignored")
-    result["input_ids"] = [int(item) for item in result["input_ids"]]
-    result["attention_mask"] = [int(item) for item in result["attention_mask"]]
-    result["labels"] = [int(item) for item in result["labels"]]
-    return result
 
 
 class BioDataCollator:
     """Dynamically pad pre-tokenized BIO examples to the batch maximum."""
 
-    def __init__(self, pad_token_id: int, *, pad_to_multiple_of: Optional[int] = 8):
+    def __init__(
+        self,
+        pad_token_id: int,
+        *,
+        pad_to_multiple_of: Optional[int] = DEFAULT_PADDING_MULTIPLE,
+    ):
         self.pad_token_id = int(pad_token_id)
         self.pad_to_multiple_of = pad_to_multiple_of
 
     def __call__(self, features: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
         if not features:
             raise ValueError("cannot collate an empty batch")
-        max_length = max(len(item["input_ids"]) for item in features)
-        if self.pad_to_multiple_of:
-            multiple = self.pad_to_multiple_of
-            max_length = ((max_length + multiple - 1) // multiple) * multiple
 
-        ids: List[List[int]] = []
-        masks: List[List[int]] = []
-        labels: List[List[int]] = []
-        sample_ids: List[Any] = []
-        for item in features:
-            padding = max_length - len(item["input_ids"])
-            ids.append(list(item["input_ids"]) + [self.pad_token_id] * padding)
-            masks.append(list(item["attention_mask"]) + [0] * padding)
-            labels.append(list(item["labels"]) + [-100] * padding)
-            sample_ids.append(item.get("id"))
+        sequences = [_extract_feature_sequences(feature) for feature in features]
+        max_length = _padded_batch_length(
+            sequences,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+        )
+        input_ids = [
+            _pad(sequence.get(INPUT_IDS_KEY, []), max_length, self.pad_token_id)
+            for sequence in sequences
+        ]
+        attention_masks = [
+            _pad(sequence.get(ATTENTION_MASK_KEY, []), max_length, 0)
+            for sequence in sequences
+        ]
+        labels = [
+            _pad(sequence.get(LABELS_KEY, []), max_length, IGNORE_INDEX)
+            for sequence in sequences
+        ]
         return {
-            "input_ids": torch.tensor(ids, dtype=torch.long),
-            "attention_mask": torch.tensor(masks, dtype=torch.long),
-            "labels": torch.tensor(labels, dtype=torch.long),
-            "ids": sample_ids,
+            INPUT_IDS_KEY: torch.tensor(input_ids, dtype=torch.long),
+            ATTENTION_MASK_KEY: torch.tensor(attention_masks, dtype=torch.long),
+            LABELS_KEY: torch.tensor(labels, dtype=torch.long),
+            "ids": [feature.get("id") for feature in features],
         }
+
+
+def _extract_feature_sequences(feature: Mapping[str, Any]) -> Dict[str, List[int]]:
+    return {
+        field: [int(item) for item in _require_feature_list(feature, field)]
+        for field in REQUIRED_SEQUENCE_FIELDS
+    }
+
+
+def _require_feature_list(feature: Mapping[str, Any], field: str) -> List[Any]:
+    value = feature.get(field)
+    if not isinstance(value, list):
+        raise TypeError(f"collator field {field!r} must be a list")
+    return value
+
+
+def _padded_batch_length(
+    sequences: Sequence[Mapping[str, Sequence[int]]],
+    *,
+    pad_to_multiple_of: Optional[int],
+) -> int:
+    max_length = max(len(sequence.get(INPUT_IDS_KEY, [])) for sequence in sequences)
+    if not pad_to_multiple_of:
+        return max_length
+    return (
+        (max_length + pad_to_multiple_of - 1) // pad_to_multiple_of
+    ) * pad_to_multiple_of
+
+
+def _pad(values: Sequence[int], target_length: int, pad_value: int) -> List[int]:
+    return list(values) + [pad_value] * (target_length - len(values))

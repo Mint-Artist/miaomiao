@@ -4,6 +4,12 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from .constants import (
+    ALIGNMENT_ALGORITHM,
+    DEFAULT_MAX_ADJUST_CHARS,
+    DEFAULT_MIN_MATCH_CHARS,
+    INDEX_CONVENTION,
+)
 
 CharSpan = Tuple[int, int]
 
@@ -95,8 +101,8 @@ class AlignmentResult:
     ) -> Dict[str, object]:
         value: Dict[str, object] = {
             "status": self.status,
-            "algorithm": "select-longest-match-v1",
-            "index_convention": "zero_based_half_open",
+            "algorithm": ALIGNMENT_ALGORITHM,
+            "index_convention": INDEX_CONVENTION,
             "min_match_chars": self.min_match_chars,
             "max_adjust_chars": self.max_adjust_chars,
             "target_coverage": self.target_coverage,
@@ -131,7 +137,7 @@ def find_longest_match_segments(
     source_text: str,
     target_text: str,
     *,
-    min_match_chars: int = 20,
+    min_match_chars: int = DEFAULT_MIN_MATCH_CHARS,
 ) -> Tuple[MatchSpan, ...]:
     """Implement SELECT Appendix B, Algorithm 1.
 
@@ -153,38 +159,13 @@ def find_longest_match_segments(
         if len(target_text) - target_cursor < min_match_chars:
             break
 
-        prefix = target_text[
-            target_cursor : target_cursor + min_match_chars
-        ]
-        candidate = source_text.find(prefix, source_cursor)
-        best_start = -1
-        best_length = 0
-
-        while candidate >= 0:
-            match_length = min_match_chars
-            maximum = min(
-                len(source_text) - candidate,
-                len(target_text) - target_cursor,
-            )
-            while (
-                match_length < maximum
-                and source_text[candidate + match_length]
-                == target_text[target_cursor + match_length]
-            ):
-                match_length += 1
-
-            # Algorithm 1 updates only for a strictly longer match.  Because
-            # str.find enumerates positions in ascending order, ties retain the
-            # earliest source position exactly as in the paper pseudocode.
-            if match_length > best_length:
-                best_start = candidate
-                best_length = match_length
-                if best_length == len(target_text) - target_cursor:
-                    # No later candidate can exceed a match that already
-                    # consumes the complete remaining target; ties keep this
-                    # earlier source position.
-                    break
-            candidate = source_text.find(prefix, candidate + 1)
+        best_start, best_length = _find_best_match(
+            source_text,
+            target_text,
+            source_cursor=source_cursor,
+            target_cursor=target_cursor,
+            min_match_chars=min_match_chars,
+        )
 
         if best_length >= min_match_chars:
             matches.append(
@@ -203,12 +184,63 @@ def find_longest_match_segments(
     return tuple(matches)
 
 
+def _find_best_match(
+    source_text: str,
+    target_text: str,
+    *,
+    source_cursor: int,
+    target_cursor: int,
+    min_match_chars: int,
+) -> Tuple[int, int]:
+    prefix = target_text[target_cursor : target_cursor + min_match_chars]
+    candidate = source_text.find(prefix, source_cursor)
+    best_start = -1
+    best_length = 0
+    remaining_target_length = len(target_text) - target_cursor
+    while candidate >= 0:
+        match_length = _continuation_length(
+            source_text,
+            target_text,
+            source_start=candidate,
+            target_start=target_cursor,
+            initial_length=min_match_chars,
+        )
+        if match_length > best_length:
+            best_start, best_length = candidate, match_length
+            if best_length == remaining_target_length:
+                break
+        candidate = source_text.find(prefix, candidate + 1)
+    return best_start, best_length
+
+
+def _continuation_length(
+    source_text: str,
+    target_text: str,
+    *,
+    source_start: int,
+    target_start: int,
+    initial_length: int,
+) -> int:
+    match_length = initial_length
+    maximum = min(
+        len(source_text) - source_start,
+        len(target_text) - target_start,
+    )
+    while (
+        match_length < maximum
+        and source_text[source_start + match_length]
+        == target_text[target_start + match_length]
+    ):
+        match_length += 1
+    return match_length
+
+
 def align_deletion_only(
     source_text: str,
     refined_text: str,
     *,
-    min_match_chars: int = 20,
-    max_adjust_chars: int = 5,
+    min_match_chars: int = DEFAULT_MIN_MATCH_CHARS,
+    max_adjust_chars: int = DEFAULT_MAX_ADJUST_CHARS,
 ) -> AlignmentResult:
     """Classify one pair as ``aligned``, ``adjusted``, or ``unaligned``.
 
@@ -320,7 +352,7 @@ def _matches_fully_cover_target(
         return False
     return all(
         left.target_end == right.target_start
-        for left, right in zip(matches, matches[1:])
+        for left, right in zip(matches, matches[1:], strict=False)
     )
 
 
@@ -343,40 +375,22 @@ def _adjust_internal_gaps(
     group_start = matches[0].source_start
     group_end = matches[0].source_end
 
-    for previous, current in zip(matches, matches[1:]):
-        source_gap_start = previous.source_end
-        source_gap_end = current.source_start
-        target_gap_start = previous.target_end
-        target_gap_end = current.target_start
-        source_gap_length = source_gap_end - source_gap_start
-        target_gap_length = target_gap_end - target_gap_start
-
-        if source_gap_length < 0 or target_gap_length < 0:
-            return None
-
-        if target_gap_length == 0:
-            if source_gap_length == 0:
-                group_end = current.source_end
-            else:
-                retained.append((group_start, group_end))
-                group_start = current.source_start
-                group_end = current.source_end
-            continue
-
-        if abs(source_gap_length - target_gap_length) > max_adjust_chars:
-            return None
-
-        adjustments.append(
-            GapAdjustment(
-                source_gap_start,
-                source_gap_end,
-                target_gap_start,
-                target_gap_end,
-                source[source_gap_start:source_gap_end],
-                target[target_gap_start:target_gap_end],
-            )
+    for previous, current in zip(matches, matches[1:], strict=False):
+        valid, split_group, adjustment = _classify_internal_gap(
+            source,
+            target,
+            previous,
+            current,
+            max_adjust_chars=max_adjust_chars,
         )
+        if not valid:
+            return None
+        if split_group:
+            retained.append((group_start, group_end))
+            group_start = current.source_start
         group_end = current.source_end
+        if adjustment is not None:
+            adjustments.append(adjustment)
 
     retained.append((group_start, group_end))
     if not adjustments:
@@ -385,6 +399,38 @@ def _adjust_internal_gaps(
     character_spans = tuple(retained)
     adjusted_text = "".join(source[start:end] for start, end in character_spans)
     return character_spans, adjusted_text, tuple(adjustments)
+
+
+def _classify_internal_gap(
+    source: str,
+    target: str,
+    previous: MatchSpan,
+    current: MatchSpan,
+    *,
+    max_adjust_chars: int,
+) -> Tuple[bool, bool, Optional[GapAdjustment]]:
+    source_start, source_end = previous.source_end, current.source_start
+    target_start, target_end = previous.target_end, current.target_start
+    source_length = source_end - source_start
+    target_length = target_end - target_start
+    if source_length < 0 or target_length < 0:
+        return False, False, None
+    if target_length == 0:
+        return True, source_length > 0, None
+    if abs(source_length - target_length) > max_adjust_chars:
+        return False, False, None
+    return (
+        True,
+        False,
+        GapAdjustment(
+            source_start,
+            source_end,
+            target_start,
+            target_end,
+            source[source_start:source_end],
+            target[target_start:target_end],
+        ),
+    )
 
 
 def _merge_adjacent_spans(spans: Iterable[CharSpan]) -> Iterable[CharSpan]:

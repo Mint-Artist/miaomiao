@@ -19,7 +19,12 @@ from bidirlm_BIO_finetune.train import DistributedEvalSampler, merge_evaluation_
 class DataAndDecodingTests(unittest.TestCase):
     def test_dataset_and_dynamic_padding(self):
         records = [
-            {"id": "a", "input_ids": [4, 5], "attention_mask": [1, 1], "labels": [1, 2]},
+            {
+                "id": "a",
+                "input_ids": [4, 5],
+                "attention_mask": [1, 1],
+                "labels": [1, 2],
+            },
             {"id": "b", "input_ids": [6], "attention_mask": [1], "labels": [0]},
         ]
         with tempfile.TemporaryDirectory() as directory:
@@ -31,8 +36,8 @@ class DataAndDecodingTests(unittest.TestCase):
             batch = BioDataCollator(0, pad_to_multiple_of=None)(
                 [dataset[0], dataset[1]]
             )
-        self.assertEqual(batch["input_ids"].tolist(), [[4, 5], [6, 0]])
-        self.assertEqual(batch["labels"].tolist(), [[1, 2], [0, -100]])
+        self.assertEqual(batch.get("input_ids").tolist(), [[4, 5], [6, 0]])
+        self.assertEqual(batch.get("labels").tolist(), [[1, 2], [0, -100]])
 
     def test_viterbi_uses_transition_scores(self):
         classification = torch.zeros((1, 3, 3))
@@ -53,13 +58,13 @@ class DataAndDecodingTests(unittest.TestCase):
         labels = torch.tensor([[-100, 1, 2, -100], [0, 1, 2, 0]])
         mask = torch.tensor([[1, 1, 1, 0], [1, 1, 1, 1]])
         result = select_loss(classification, transitions, labels, mask)
-        self.assertTrue(torch.isfinite(result["loss"]))
-        result["loss"].backward()
+        self.assertTrue(torch.isfinite(result.get("loss")))
+        result.get("loss").backward()
 
     def test_metrics_and_spans(self):
         labels = torch.tensor([[0, 1, 2, 0, 1, 2]])
         metrics = compute_bio_metrics(labels, labels)
-        self.assertEqual(metrics["span_f1"], 1.0)
+        self.assertEqual(metrics.get("span_f1"), 1.0)
         self.assertEqual(bio_spans(labels[0].tolist()), [(1, 3), (4, 6)])
 
     def test_pad_and_cat_handles_dynamic_batch_widths(self):
@@ -93,8 +98,8 @@ class DataAndDecodingTests(unittest.TestCase):
             },
         ]
         metrics = merge_evaluation_parts(parts)
-        self.assertEqual(metrics["loss"], 2.0)
-        self.assertEqual(metrics["token_accuracy"], 1.0)
+        self.assertEqual(metrics.get("loss"), 2.0)
+        self.assertEqual(metrics.get("token_accuracy"), 1.0)
 
 
 if __name__ == "__main__":

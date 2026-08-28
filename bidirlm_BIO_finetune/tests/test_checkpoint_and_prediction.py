@@ -88,11 +88,11 @@ class CheckpointTests(unittest.TestCase):
                 map_location="cpu",
                 weights_only=False,
             )
-        self.assertEqual(state["global_step"], 20)
-        self.assertEqual(state["resume_epoch"], 1)
-        self.assertEqual(state["resume_batch_index"], 40)
-        self.assertEqual(state["running_batches"], 40)
-        self.assertEqual(state["world_size"], 1)
+        self.assertEqual(state.get("global_step"), 20)
+        self.assertEqual(state.get("resume_epoch"), 1)
+        self.assertEqual(state.get("resume_batch_index"), 40)
+        self.assertEqual(state.get("running_batches"), 40)
+        self.assertEqual(state.get("world_size"), 1)
 
     def test_prune_step_checkpoints_does_not_touch_best_or_last(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -126,11 +126,12 @@ class PredictionOutputTests(unittest.TestCase):
                 id_field="document_id",
             )
             record = dataset[0]
-        self.assertEqual(record["id"], "raw-1")
-        self.assertEqual(record["input_ids"], [99, 1, 2, 3, 4, 100])
-        self.assertEqual(record["labels"], [-100, 0, 0, 0, 0, -100])
-        self.assertEqual(record["prediction_metadata"]["source_text"], "甲乙\n丙")
-        self.assertFalse(record["prediction_metadata"]["has_gold"])
+        metadata = record.get("prediction_metadata", {})
+        self.assertEqual(record.get("id"), "raw-1")
+        self.assertEqual(record.get("input_ids"), [99, 1, 2, 3, 4, 100])
+        self.assertEqual(record.get("labels"), [-100, 0, 0, 0, 0, -100])
+        self.assertEqual(metadata.get("source_text"), "甲乙\n丙")
+        self.assertFalse(metadata.get("has_gold"))
 
     def test_auto_detects_json_string_as_raw_input(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -145,8 +146,10 @@ class PredictionOutputTests(unittest.TestCase):
                 tokenizer=FakeTokenizer(),
             )
             record = dataset[0]
-        self.assertEqual(record["id"], "line-1")
-        self.assertEqual(record["prediction_metadata"]["input_format"], "raw")
+        self.assertEqual(record.get("id"), "line-1")
+        self.assertEqual(
+            record.get("prediction_metadata", {}).get("input_format"), "raw"
+        )
 
     def test_audit_jsonl_is_flattened_for_prediction(self):
         audit = {
@@ -168,9 +171,12 @@ class PredictionOutputTests(unittest.TestCase):
             )
             dataset = PredictionJsonlDataset(path, input_format="auto", max_length=8)
             record = dataset[0]
-        self.assertEqual(record["input_ids"], [1, 2, 3, 4, 5, 6])
-        self.assertEqual(record["labels"], [0, 1, 2, 0, 1, 2])
-        self.assertEqual(record["prediction_metadata"]["source_text"], "甲乙丙丁戊己")
+        self.assertEqual(record.get("input_ids"), [1, 2, 3, 4, 5, 6])
+        self.assertEqual(record.get("labels"), [0, 1, 2, 0, 1, 2])
+        self.assertEqual(
+            record.get("prediction_metadata", {}).get("source_text"),
+            "甲乙丙丁戊己",
+        )
 
     def test_prediction_output_contains_exact_source_segments(self):
         predicted_labels = [0, 1, 2, 0, 2, 2]
@@ -189,14 +195,18 @@ class PredictionOutputTests(unittest.TestCase):
             tokenizer=FakeTokenizer(),
         )
         self.assertEqual(labels_to_token_spans(predicted_labels), [(1, 3), (4, 6)])
-        self.assertEqual(output["source_text"], "甲乙丙丁戊己")
-        self.assertEqual(output["predicted_refined_text"], "乙丙戊己")
+        self.assertEqual(output.get("source_text"), "甲乙丙丁戊己")
+        self.assertEqual(output.get("predicted_refined_text"), "乙丙戊己")
         self.assertEqual(
-            [item["text"] for item in output["predicted_retained_segments"]],
+            [
+                item.get("text")
+                for item in output.get("predicted_retained_segments", [])
+            ],
             ["乙丙", "戊己"],
         )
         self.assertEqual(
-            output["predicted_retained_segments"][1]["starts_with_tag"], "I"
+            output.get("predicted_retained_segments", [])[1].get("starts_with_tag"),
+            "I",
         )
 
     def test_raw_prediction_output_omits_gold_fields(self):
@@ -212,7 +222,7 @@ class PredictionOutputTests(unittest.TestCase):
             },
             tokenizer=FakeTokenizer(),
         )
-        self.assertEqual(output["predicted_refined_text"], "甲乙")
+        self.assertEqual(output.get("predicted_refined_text"), "甲乙")
         self.assertNotIn("gold_labels", output)
         self.assertNotIn("gold_retained_segments", output)
         self.assertNotIn("teacher_refined_text", output)

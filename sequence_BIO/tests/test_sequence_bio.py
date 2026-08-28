@@ -42,7 +42,9 @@ class CharacterTokenizer:
 class ListOffsetTokenizer(CharacterTokenizer):
     def __call__(self, text, **kwargs):
         encoded = super().__call__(text, **kwargs)
-        encoded["offset_mapping"] = [list(item) for item in encoded["offset_mapping"]]
+        encoded["offset_mapping"] = [
+            list(item) for item in encoded.get("offset_mapping", [])
+        ]
         return encoded
 
 
@@ -198,9 +200,21 @@ class CliTest(unittest.TestCase):
             input_path = root / "pairs.jsonl"
             accepted_path = root / "accepted.jsonl"
             rows = [
-                {"id": "a", "source_text": aligned_source, "refined_text": aligned_target},
-                {"id": "b", "source_text": adjusted_source, "refined_text": adjusted_target},
-                {"id": "c", "source_text": unaligned_source, "refined_text": unaligned_target},
+                {
+                    "id": "a",
+                    "source_text": aligned_source,
+                    "refined_text": aligned_target,
+                },
+                {
+                    "id": "b",
+                    "source_text": adjusted_source,
+                    "refined_text": adjusted_target,
+                },
+                {
+                    "id": "c",
+                    "source_text": unaligned_source,
+                    "refined_text": unaligned_target,
+                },
             ]
             input_path.write_text(
                 "".join(json.dumps(row) + "\n" for row in rows),
@@ -228,12 +242,15 @@ class CliTest(unittest.TestCase):
             rejected = _read_jsonl(root / "accepted.rejected.jsonl")
             manifest = json.loads((root / "accepted.meta.json").read_text())
 
-            self.assertEqual([row["alignment"]["status"] for row in accepted], ["aligned", "adjusted"])
+            self.assertEqual(
+                [row.get("alignment", {}).get("status") for row in accepted],
+                ["aligned", "adjusted"],
+            )
             self.assertEqual(len(sft), 2)
             self.assertEqual(len(rejected), 1)
-            self.assertEqual(rejected[0]["rejection_reason"], "unaligned")
-            self.assertEqual(manifest["counts"]["accepted"], 2)
-            self.assertEqual(manifest["counts"]["unaligned"], 1)
+            self.assertEqual(rejected[0].get("rejection_reason"), "unaligned")
+            self.assertEqual(manifest.get("counts", {}).get("accepted"), 2)
+            self.assertEqual(manifest.get("counts", {}).get("unaligned"), 1)
             self.assertNotIn("transition_label_ids", json.dumps(accepted))
 
 

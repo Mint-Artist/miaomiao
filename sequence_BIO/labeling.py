@@ -4,15 +4,21 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from .alignment import AlignmentResult, CharSpan, align_deletion_only
-
-
-# Numeric IDs are arbitrary as long as the model config and dataset agree.
-DEFAULT_LABEL_TO_ID: Dict[str, int] = {"O": 0, "B": 1, "I": 2}
+from .constants import (
+    BEGIN_TAG,
+    DEFAULT_LABEL_TO_ID,
+    DEFAULT_MAX_ADJUST_CHARS,
+    DEFAULT_MAX_LENGTH,
+    DEFAULT_MIN_MATCH_CHARS,
+    IGNORE_INDEX,
+    IGNORED_TAG,
+    INSIDE_TAG,
+    OUTSIDE_TAG,
+)
 
 
 class OffsetTokenizer(Protocol):
-    def __call__(self, text: str, **kwargs: Any) -> Mapping[str, Any]:
-        ...
+    def __call__(self, text: str, **kwargs: Any) -> Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -50,7 +56,9 @@ class TokenLabelResult:
         value["bio_tags"] = list(self.bio_tags)
         value["labels"] = list(self.labels)
         value["token_spans"] = [list(span) for span in self.token_spans]
-        value["boundary_adjustments"] = [dict(item) for item in self.boundary_adjustments]
+        value["boundary_adjustments"] = [
+            dict(item) for item in self.boundary_adjustments
+        ]
         value["sequence_length"] = self.sequence_length
         return value
 
@@ -69,57 +77,94 @@ def spans_to_bio_labels(
     character_spans: Sequence[CharSpan],
     *,
     label_to_id: Mapping[str, int] = DEFAULT_LABEL_TO_ID,
-    ignore_index: int = -100,
+    ignore_index: int = IGNORE_INDEX,
 ) -> Tuple[List[str], List[int], List[Tuple[int, int]], List[Dict[str, int]]]:
     """Convert retained source-character spans to token-level BIO labels."""
 
     offsets = [(int(item[0]), int(item[1])) for item in offset_mapping]
-    bio_tags = ["O" if start != end else "IGN" for start, end in offsets]
+    bio_tags = [OUTSIDE_TAG if start != end else IGNORED_TAG for start, end in offsets]
     token_ranges: List[Tuple[int, int]] = []
     adjustments: List[Dict[str, int]] = []
 
     for char_start, char_end in character_spans:
-        if char_start < 0 or char_end <= char_start:
-            raise ValueError("invalid character span: %r" % ((char_start, char_end),))
-        overlapping = [
-            index
-            for index, (token_start, token_end) in enumerate(offsets)
-            if token_start != token_end
-            and token_end > char_start
-            and token_start < char_end
-        ]
-        if not overlapping:
+        mapped = _map_character_span(offsets, char_start, char_end)
+        if mapped is None:
             continue
-
-        token_start_index = overlapping[0]
-        token_end_index = overlapping[-1] + 1
-        token_ranges.append((token_start_index, token_end_index))
-
-        expanded_start = offsets[token_start_index][0]
-        expanded_end = offsets[token_end_index - 1][1]
-        if expanded_start != char_start or expanded_end != char_end:
-            adjustments.append(
-                {
-                    "char_start": char_start,
-                    "char_end": char_end,
-                    "expanded_start": expanded_start,
-                    "expanded_end": expanded_end,
-                    "left_expansion": max(0, char_start - expanded_start),
-                    "right_expansion": max(0, expanded_end - char_end),
-                }
-            )
+        token_range, adjustment = mapped
+        token_ranges.append(token_range)
+        if adjustment is not None:
+            adjustments.append(adjustment)
 
     merged_ranges = _merge_overlapping_token_ranges(token_ranges)
     for token_start, token_end in merged_ranges:
-        bio_tags[token_start] = "B"
+        bio_tags[token_start] = BEGIN_TAG
         for index in range(token_start + 1, token_end):
-            bio_tags[index] = "I"
+            bio_tags[index] = INSIDE_TAG
 
-    labels = [
-        ignore_index if tag == "IGN" else int(label_to_id[tag])
-        for tag in bio_tags
-    ]
+    labels = [_label_id(tag, label_to_id, ignore_index) for tag in bio_tags]
     return bio_tags, labels, merged_ranges, adjustments
+
+
+def _map_character_span(
+    offsets: Sequence[Tuple[int, int]],
+    char_start: int,
+    char_end: int,
+) -> Optional[Tuple[Tuple[int, int], Optional[Dict[str, int]]]]:
+    if char_start < 0 or char_end <= char_start:
+        raise ValueError(f"invalid character span: {(char_start, char_end)!r}")
+    overlapping = _overlapping_token_indices(offsets, char_start, char_end)
+    if not overlapping:
+        return None
+    token_start = overlapping[0]
+    token_end = overlapping[-1] + 1
+    expanded_start = offsets[token_start][0]
+    expanded_end = offsets[token_end - 1][1]
+    adjustment = None
+    if expanded_start != char_start or expanded_end != char_end:
+        adjustment = _boundary_adjustment(
+            char_start,
+            char_end,
+            expanded_start,
+            expanded_end,
+        )
+    return (token_start, token_end), adjustment
+
+
+def _overlapping_token_indices(
+    offsets: Sequence[Tuple[int, int]], char_start: int, char_end: int
+) -> List[int]:
+    return [
+        index
+        for index, (token_start, token_end) in enumerate(offsets)
+        if token_start != token_end
+        and token_end > char_start
+        and token_start < char_end
+    ]
+
+
+def _boundary_adjustment(
+    char_start: int,
+    char_end: int,
+    expanded_start: int,
+    expanded_end: int,
+) -> Dict[str, int]:
+    return {
+        "char_start": char_start,
+        "char_end": char_end,
+        "expanded_start": expanded_start,
+        "expanded_end": expanded_end,
+        "left_expansion": max(0, char_start - expanded_start),
+        "right_expansion": max(0, expanded_end - char_end),
+    }
+
+
+def _label_id(tag: str, label_to_id: Mapping[str, int], ignore_index: int) -> int:
+    if tag == IGNORED_TAG:
+        return ignore_index
+    label = label_to_id.get(tag)
+    if label is None:
+        raise KeyError(f"missing label ID for BIO tag {tag!r}")
+    return int(label)
 
 
 def label_aligned_pair(
@@ -127,12 +172,12 @@ def label_aligned_pair(
     refined_text: str,
     tokenizer: OffsetTokenizer,
     *,
-    min_match_chars: int = 20,
-    max_adjust_chars: int = 5,
-    max_length: Optional[int] = 32768,
+    min_match_chars: int = DEFAULT_MIN_MATCH_CHARS,
+    max_adjust_chars: int = DEFAULT_MAX_ADJUST_CHARS,
+    max_length: Optional[int] = DEFAULT_MAX_LENGTH,
     add_special_tokens: bool = True,
     label_to_id: Mapping[str, int] = DEFAULT_LABEL_TO_ID,
-    ignore_index: int = -100,
+    ignore_index: int = IGNORE_INDEX,
 ) -> Tuple[AlignmentResult, Optional[TokenLabelResult]]:
     """Align, verify, tokenize, and BIO-label one source/teacher pair."""
 
@@ -152,11 +197,11 @@ def label_aligned_pair(
         "truncation": max_length is not None,
     }
     if max_length is not None:
-        tokenizer_kwargs["max_length"] = max_length
+        tokenizer_kwargs.update({"max_length": max_length})
     encoded = tokenizer(source_text, **tokenizer_kwargs)
 
-    input_ids = _flatten_input_ids(encoded["input_ids"])
-    offsets = _normalize_offsets(encoded["offset_mapping"])
+    input_ids = _flatten_input_ids(encoded.get("input_ids"))
+    offsets = _normalize_offsets(encoded.get("offset_mapping"))
     raw_attention_mask = encoded.get("attention_mask", [1] * len(input_ids))
     attention_mask = _flatten_input_ids(raw_attention_mask)
     if not (len(input_ids) == len(offsets) == len(attention_mask)):
@@ -195,7 +240,7 @@ def label_aligned_pair(
 def derive_transition_supervision(
     labels: Sequence[int],
     *,
-    ignore_index: int = -100,
+    ignore_index: int = IGNORE_INDEX,
 ) -> Tuple[List[int], List[int], List[bool]]:
     """Derive the paper's conditional ``u -> v`` targets from BIO labels.
 
@@ -208,7 +253,7 @@ def derive_transition_supervision(
     to_labels = [int(item) for item in labels[1:]]
     mask = [
         left != ignore_index and right != ignore_index
-        for left, right in zip(from_labels, to_labels)
+        for left, right in zip(from_labels, to_labels, strict=True)
     ]
     return from_labels, to_labels, mask
 
