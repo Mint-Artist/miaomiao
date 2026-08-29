@@ -1,0 +1,212 @@
+"""
+直接运行的多分片 Markdown JSONL 清洗入口。
+
+使用方式：
+1. 只修改下面“用户配置区”的变量。
+2. 安装依赖：python3 -m pip install -r requirements.txt
+3. 在本目录运行：python3 run_cleaning.py
+
+本脚本没有 CLI 参数，也不会调用任何大模型。
+"""
+
+import logging
+from pathlib import Path
+
+from cleaner import BatchConfig, CleanerConfig, clean_jsonl_shards
+from cleaner.batch import BatchSummary, ShardResult
+from cleaner.config import (
+    AssemblyConfig,
+    ChunkConfig,
+    ContentPolicy,
+    InputConfig,
+    NormalizationConfig,
+    OutputConfig,
+    RuleConfig,
+    TemplateConfig,
+)
+
+LOGGER = logging.getLogger(__name__)
+
+
+# ============================= 用户配置区 =============================
+
+PROJECT_DIR = Path(__file__).resolve().parent
+
+# 输入目录及文件匹配规则。** 表示递归查找子目录。
+INPUT_DIR = PROJECT_DIR / "examples"
+INPUT_GLOB = "**/*.jsonl"
+
+# 支持嵌套键，例如 "data.markdown"、"payload.content"。
+MARKDOWN_KEY = "content"
+ID_KEY = "doc_id"       # 没有该字段时自动使用 JSONL 行号
+URL_KEY = "url"         # 没有 URL 时仍可运行，但会跳过站点模板学习
+TITLE_KEY = "title"     # 没有标题字段时使用 Markdown 中的第一个 H1/标题
+
+OUTPUT_DIR = PROJECT_DIR / "output"
+
+# 分片级多进程。近似 token 计数可从 4 开始；真实 tokenizer 建议先设为 1～2。
+MAX_WORKERS = 4
+SKIP_COMPLETED_SHARDS = True
+CONTINUE_ON_ERROR = True
+WRITE_SHARD_PREVIEWS = False
+
+# 片段长度使用近似中英混合 token 计数。若指定真实 tokenizer 路径，需安装 transformers。
+TOKENIZER_NAME_OR_PATH = None  # 例如 "/models/Qwen3-0.6B"
+TARGET_MIN_TOKENS = 300
+TARGET_MAX_TOKENS = 768
+HARD_MAX_TOKENS = 1536
+HARD_MIN_TOKENS = 300
+STRUCTURED_HARD_MIN_TOKENS = 300
+
+# 保守文本修复：仅删除边界处明确的 HTML 注释残片，并修复相邻的完全重复正文。
+ENABLE_TEXT_NORMALIZATION = True
+SOFTBREAK_POLICY = "smart"  # smart / preserve / unwrap
+MIN_STRUCTURED_SOFTBREAK_LINES = 2
+PRESERVE_COMPLETE_SENTENCE_LINES = True
+STRIP_BOUNDARY_ARTIFACTS = True
+NORMALIZE_PROSE_SPACING = True
+DEDUPLICATE_ADJACENT_PROSE_BLOCKS = True
+DEDUPLICATE_REPEATED_SENTENCE_SEQUENCES = True
+MIN_DUPLICATE_SENTENCE_CHARS = 15
+MIN_DUPLICATE_SEQUENCE_CHARS = 30
+MAX_DUPLICATE_SEQUENCE_SENTENCES = 20
+
+# 输出模式：fragment 保留原切片；document 输出全文；both 同时输出两套结果。
+OUTPUT_MODE = "both"
+DOCUMENT_MIN_TOKENS = 300
+DOCUMENT_MAX_TOKENS = 6000
+DOCUMENT_OVER_MAX_POLICY = "review"  # review / reject / allow
+
+# 正文类型策略。
+KEEP_LISTS = True
+KEEP_BLOCKQUOTES = True
+KEEP_TABLES = True
+KEEP_CODE_BLOCKS = False
+KEEP_HTML_VISIBLE_TEXT = True
+KEEP_IMAGE_ALT_TEXT = False
+
+# 同站点重复模板检测。数据量很小或 URL 不可靠时可设为 False。
+ENABLE_SITE_TEMPLATE_DETECTION = False
+TEMPLATE_MIN_HOST_DOCUMENTS = 20
+TEMPLATE_MIN_DOCUMENTS = 5
+
+# 最多把多少个 accepted/review 结果写入各自的可读 Markdown 预览。
+PREVIEW_FRAGMENTS = 100
+PREVIEW_DOCUMENTS = 100
+
+
+# =========================== 配置装配与运行 ===========================
+
+CONFIG = CleanerConfig(
+    # 批处理时会为每个分片替换此占位路径。
+    input_path="__set_by_batch_runner__",
+    input=InputConfig(
+        markdown_key=MARKDOWN_KEY,
+        id_key=ID_KEY,
+        url_key=URL_KEY,
+        title_key=TITLE_KEY,
+    ),
+    output=OutputConfig(
+        accepted_path=str(OUTPUT_DIR / "accepted.jsonl"),
+        review_path=str(OUTPUT_DIR / "review.jsonl"),
+        rejected_path=str(OUTPUT_DIR / "rejected.jsonl"),
+        templates_path=str(OUTPUT_DIR / "templates.json"),
+        statistics_path=str(OUTPUT_DIR / "statistics.json"),
+        preview_path=str(OUTPUT_DIR / "preview.md"),
+        preview_fragments=PREVIEW_FRAGMENTS,
+        document_accepted_path=str(OUTPUT_DIR / "documents" / "accepted.jsonl"),
+        document_review_path=str(OUTPUT_DIR / "documents" / "review.jsonl"),
+        document_rejected_path=str(OUTPUT_DIR / "documents" / "rejected.jsonl"),
+        document_preview_path=str(OUTPUT_DIR / "documents" / "preview.md"),
+        preview_documents=PREVIEW_DOCUMENTS,
+    ),
+    content=ContentPolicy(
+        keep_lists=KEEP_LISTS,
+        keep_blockquotes=KEEP_BLOCKQUOTES,
+        keep_tables=KEEP_TABLES,
+        keep_code_blocks=KEEP_CODE_BLOCKS,
+        keep_html_visible_text=KEEP_HTML_VISIBLE_TEXT,
+        keep_image_alt_text=KEEP_IMAGE_ALT_TEXT,
+    ),
+    normalization=NormalizationConfig(
+        enabled=ENABLE_TEXT_NORMALIZATION,
+        softbreak_policy=SOFTBREAK_POLICY,
+        min_structured_softbreak_lines=MIN_STRUCTURED_SOFTBREAK_LINES,
+        preserve_complete_sentence_lines=PRESERVE_COMPLETE_SENTENCE_LINES,
+        strip_boundary_artifacts=STRIP_BOUNDARY_ARTIFACTS,
+        normalize_prose_spacing=NORMALIZE_PROSE_SPACING,
+        deduplicate_adjacent_prose_blocks=DEDUPLICATE_ADJACENT_PROSE_BLOCKS,
+        deduplicate_repeated_sentence_sequences=DEDUPLICATE_REPEATED_SENTENCE_SEQUENCES,
+        min_duplicate_sentence_chars=MIN_DUPLICATE_SENTENCE_CHARS,
+        min_duplicate_sequence_chars=MIN_DUPLICATE_SEQUENCE_CHARS,
+        max_duplicate_sequence_sentences=MAX_DUPLICATE_SEQUENCE_SENTENCES,
+    ),
+    assembly=AssemblyConfig(
+        output_mode=OUTPUT_MODE,
+        document_min_tokens=DOCUMENT_MIN_TOKENS,
+        document_max_tokens=DOCUMENT_MAX_TOKENS,
+        document_over_max_policy=DOCUMENT_OVER_MAX_POLICY,
+    ),
+    chunk=ChunkConfig(
+        target_min_tokens=TARGET_MIN_TOKENS,
+        target_max_tokens=TARGET_MAX_TOKENS,
+        hard_max_tokens=HARD_MAX_TOKENS,
+    ),
+    rules=RuleConfig(
+        hard_min_tokens=HARD_MIN_TOKENS,
+        structured_hard_min_tokens=STRUCTURED_HARD_MIN_TOKENS,
+        soft_min_tokens=TARGET_MIN_TOKENS,
+        hard_max_tokens=HARD_MAX_TOKENS,
+    ),
+    templates=TemplateConfig(
+        enabled=ENABLE_SITE_TEMPLATE_DETECTION,
+        min_host_documents=TEMPLATE_MIN_HOST_DOCUMENTS,
+        min_template_documents=TEMPLATE_MIN_DOCUMENTS,
+    ),
+    tokenizer_name_or_path=TOKENIZER_NAME_OR_PATH,
+)
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    batch = BatchConfig(
+        input_dir=str(INPUT_DIR),
+        input_glob=INPUT_GLOB,
+        output_dir=str(OUTPUT_DIR),
+        max_workers=MAX_WORKERS,
+        skip_completed_shards=SKIP_COMPLETED_SHARDS,
+        continue_on_error=CONTINUE_ON_ERROR,
+        write_shard_previews=WRITE_SHARD_PREVIEWS,
+    )
+    LOGGER.info("输入目录：%s", INPUT_DIR)
+    LOGGER.info("输出目录：%s", OUTPUT_DIR)
+    LOGGER.info("输出模式：%s；进程数：%d", OUTPUT_MODE, MAX_WORKERS)
+    summary = clean_jsonl_shards(CONFIG, batch, on_result=_log_progress)
+    LOGGER.info(
+        "全部完成：发现 %d，成功 %d，跳过 %d，失败 %d，耗时 %.2f 秒",
+        summary.discovered_shards,
+        summary.completed_shards,
+        summary.skipped_shards,
+        summary.failed_shards,
+        summary.elapsed_seconds,
+    )
+    LOGGER.info("批次统计：%s", OUTPUT_DIR / "metadata" / "batch_summary.json")
+
+
+def _log_progress(result: ShardResult, summary: BatchSummary) -> None:
+    finished = summary.completed_shards + summary.skipped_shards + summary.failed_shards
+    detail = ""
+    if result.status == "failed":
+        detail = " (%s: %s)" % (result.error_type, result.error)
+    LOGGER.info(
+        "[%d/%d] %-9s %s%s",
+        finished,
+        summary.discovered_shards,
+        result.status,
+        result.relative_path,
+        detail,
+    )
+
+
+if __name__ == "__main__":
+    main()
