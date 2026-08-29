@@ -66,9 +66,23 @@ for item in values:
 - 提取职责单一的判断函数；
 - 使用语义明确的布尔变量。
 
-## 6. 禁止使用可变对象作为默认参数
+## 6. 参数使用只读接口，禁止可变默认值
 
-不得使用列表、字典、集合或其他可变对象作为函数默认值。
+函数只需要读取集合参数时，禁止声明为 `List`、`Dict`、`Set` 等具体可变容器，应声明为 `Sequence`、`Mapping`、`AbstractSet` 等只读接口，并且不得在函数内修改传入对象。
+
+```python
+# 禁止
+def process(records: List[dict]) -> None:
+    records.append({})
+
+# 使用
+def process(records: Sequence[Mapping[str, object]]) -> None:
+    ...
+```
+
+`Sequence` 是只读接口，不提供 `append`、`extend` 等修改操作，因此 `jobs: Sequence[_ShardJob]` 符合本规则。调用方即使传入 `list`，被调用函数也只按照只读接口使用它。
+
+同时，不得使用列表、字典、集合或其他可变对象作为函数默认值。
 
 ```python
 # 禁止
@@ -80,13 +94,7 @@ def process(options: dict | None = None) -> None:
     resolved_options = {} if options is None else options
 ```
 
-普通可变对象可以作为运行时实参传入；禁止的是在函数定义中复用可变默认对象。
-
-## 7. 控制圈复杂度和嵌套深度
-
-函数应保持单一职责，避免过深的 `if`、`for` 和 `try` 嵌套。复杂流程应拆分为命名明确的小函数，并尽量采用提前返回。
-
-## 8. 禁止魔鬼数字和重复字面量
+## 7. 禁止魔鬼数字和重复字面量
 
 业务含义明确的数值、标签和重复字符串应集中定义为命名常量。
 
@@ -106,4 +114,3 @@ python -m ruff check --select E4,E7,E9,F,I bidirlm_BIO_finetune sequence_BIO
 python -m unittest discover -s sequence_BIO/tests -t . -v
 python -m unittest discover -s bidirlm_BIO_finetune/tests -t . -v
 ```
-
