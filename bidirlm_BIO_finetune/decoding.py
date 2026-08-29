@@ -5,7 +5,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 import torch
 import torch.nn.functional as F
 
-from .constants import (
+from bidirlm_BIO_finetune.constants import (
     BEGIN_LABEL_ID,
     IGNORE_INDEX,
     INSIDE_LABEL_ID,

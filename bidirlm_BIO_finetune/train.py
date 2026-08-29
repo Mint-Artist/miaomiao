@@ -20,7 +20,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, DistributedSampler, Sampler
 
-from .constants import (
+from bidirlm_BIO_finetune.constants import (
     ATTENTION_MASK_KEY,
     CLASSIFICATION_LOGITS_KEY,
     CLASSIFICATION_LOSS_KEY,
@@ -33,9 +33,12 @@ from .constants import (
     TRANSITION_LOGITS_KEY,
     TRANSITION_LOSS_KEY,
 )
-from .data import BioDataCollator, BioJsonlDataset
-from .decoding import compute_bio_metrics_from_sequences, viterbi_decode_batch
-from .modeling import SelectBidirLM
+from bidirlm_BIO_finetune.data import BioDataCollator, BioJsonlDataset
+from bidirlm_BIO_finetune.decoding import (
+    compute_bio_metrics_from_sequences,
+    viterbi_decode_batch,
+)
+from bidirlm_BIO_finetune.modeling import SelectBidirLM
 
 LOGGER = logging.getLogger(__name__)
 MAIN_PROCESS_RANK = 0

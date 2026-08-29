@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .constants import (
+from bidirlm_BIO_finetune.constants import (
     CLASSIFICATION_LOGITS_KEY,
     CLASSIFICATION_LOSS_KEY,
     IGNORE_INDEX,

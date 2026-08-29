@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from .constants import (
+from bidirlm_BIO_finetune.constants import (
     ATTENTION_MASK_KEY,
     BEGIN_LABEL_ID,
     CLASSIFICATION_LOGITS_KEY,
@@ -24,9 +24,13 @@ from .constants import (
     OUTSIDE_LABEL_ID,
     TRANSITION_LOGITS_KEY,
 )
-from .data import BioDataCollator, validate_record
-from .decoding import compute_bio_metrics, pad_and_cat, viterbi_decode_batch
-from .modeling import SelectBidirLM
+from bidirlm_BIO_finetune.data import BioDataCollator, validate_record
+from bidirlm_BIO_finetune.decoding import (
+    compute_bio_metrics,
+    pad_and_cat,
+    viterbi_decode_batch,
+)
+from bidirlm_BIO_finetune.modeling import SelectBidirLM
 
 LOGGER = logging.getLogger(__name__)
 

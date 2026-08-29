@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 
-from .alignment import AlignmentResult, CharSpan, align_deletion_only
-from .constants import (
+from sequence_BIO.alignment import AlignmentResult, CharSpan, align_deletion_only
+from sequence_BIO.constants import (
     BEGIN_TAG,
     DEFAULT_LABEL_TO_ID,
     DEFAULT_MAX_ADJUST_CHARS,
@@ -133,13 +133,16 @@ def _map_character_span(
 def _overlapping_token_indices(
     offsets: Sequence[Tuple[int, int]], char_start: int, char_end: int
 ) -> List[int]:
-    return [
-        index
-        for index, (token_start, token_end) in enumerate(offsets)
-        if token_start != token_end
-        and token_end > char_start
-        and token_start < char_end
-    ]
+    overlapping_indices: List[int] = []
+    for index, (token_start, token_end) in enumerate(offsets):
+        if token_start == token_end:
+            continue
+        if token_end <= char_start:
+            continue
+        if token_start >= char_end:
+            continue
+        overlapping_indices.append(index)
+    return overlapping_indices
 
 
 def _boundary_adjustment(
@@ -291,11 +294,7 @@ def _normalize_offsets(value: Any) -> List[Tuple[int, int]]:
         value = value.tolist()
     if not isinstance(value, list):
         raise TypeError("tokenizer offset_mapping must be a list for one input")
-    if (
-        len(value) == 1
-        and isinstance(value[0], list)
-        and (not value[0] or isinstance(value[0][0], (list, tuple)))
-    ):
+    if _is_single_offset_batch(value):
         value = value[0]
 
     offsets: List[Tuple[int, int]] = []
@@ -304,3 +303,14 @@ def _normalize_offsets(value: Any) -> List[Tuple[int, int]]:
             raise ValueError("each tokenizer offset must contain exactly two integers")
         offsets.append((int(item[0]), int(item[1])))
     return offsets
+
+
+def _is_single_offset_batch(value: List[Any]) -> bool:
+    if len(value) != 1:
+        return False
+    first_item = value[0]
+    if not isinstance(first_item, list):
+        return False
+    if not first_item:
+        return True
+    return isinstance(first_item[0], (list, tuple))

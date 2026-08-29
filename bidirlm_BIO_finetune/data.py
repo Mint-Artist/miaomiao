@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 import torch
 from torch.utils.data import Dataset
 
-from .constants import (
+from bidirlm_BIO_finetune.constants import (
     ATTENTION_MASK_KEY,
     DEFAULT_MAX_LENGTH,
     IGNORE_INDEX,

@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, Dict, Mapping, Optional, Sequence
 
-from .alignment import AlignmentResult, extract_refined_text
-from .constants import (
+from sequence_BIO.alignment import AlignmentResult, extract_refined_text
+from sequence_BIO.constants import (
     ALIGNMENT_ALGORITHM,
     DEFAULT_LABEL_TO_ID,
     DEFAULT_MAX_ADJUST_CHARS,
@@ -18,7 +18,7 @@ from .constants import (
     IGNORE_INDEX,
     INDEX_CONVENTION,
 )
-from .labeling import TokenLabelResult, label_aligned_pair
+from sequence_BIO.labeling import TokenLabelResult, label_aligned_pair
 
 LOGGER = logging.getLogger(__name__)
 SUCCESS_EXIT_CODE = 0

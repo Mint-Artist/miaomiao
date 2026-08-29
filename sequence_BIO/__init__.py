@@ -1,6 +1,6 @@
 """SELECT-style deletion-only alignment and BIO labeling utilities."""
 
-from .alignment import (
+from sequence_BIO.alignment import (
     AlignmentResult,
     GapAdjustment,
     MatchSpan,
@@ -8,7 +8,7 @@ from .alignment import (
     extract_refined_text,
     find_longest_match_segments,
 )
-from .labeling import (
+from sequence_BIO.labeling import (
     DEFAULT_LABEL_TO_ID,
     TokenLabelResult,
     derive_transition_supervision,

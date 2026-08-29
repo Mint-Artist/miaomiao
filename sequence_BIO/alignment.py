@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from .constants import (
+from sequence_BIO.constants import (
     ALIGNMENT_ALGORITHM,
     DEFAULT_MAX_ADJUST_CHARS,
     DEFAULT_MIN_MATCH_CHARS,
