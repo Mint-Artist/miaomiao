@@ -9,6 +9,7 @@
 本脚本没有 CLI 参数，也不会调用任何大模型。
 """
 
+import logging
 from pathlib import Path
 
 from cleaner import BatchConfig, CleanerConfig, clean_jsonl_shards
@@ -23,6 +24,8 @@ from cleaner.config import (
     RuleConfig,
     TemplateConfig,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 # ============================= 用户配置区 =============================
@@ -165,6 +168,7 @@ CONFIG = CleanerConfig(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     batch = BatchConfig(
         input_dir=str(INPUT_DIR),
         input_glob=INPUT_GLOB,
@@ -174,32 +178,33 @@ def main() -> None:
         continue_on_error=CONTINUE_ON_ERROR,
         write_shard_previews=WRITE_SHARD_PREVIEWS,
     )
-    print("输入目录：%s" % INPUT_DIR)
-    print("输出目录：%s" % OUTPUT_DIR)
-    print("输出模式：%s；进程数：%d" % (OUTPUT_MODE, MAX_WORKERS))
-    summary = clean_jsonl_shards(CONFIG, batch, on_result=_print_progress)
-    print(
-        "\n全部完成：发现 %d，成功 %d，跳过 %d，失败 %d，耗时 %.2f 秒"
-        % (
-            summary.discovered_shards,
-            summary.completed_shards,
-            summary.skipped_shards,
-            summary.failed_shards,
-            summary.elapsed_seconds,
-        )
+    LOGGER.info("输入目录：%s", INPUT_DIR)
+    LOGGER.info("输出目录：%s", OUTPUT_DIR)
+    LOGGER.info("输出模式：%s；进程数：%d", OUTPUT_MODE, MAX_WORKERS)
+    summary = clean_jsonl_shards(CONFIG, batch, on_result=_log_progress)
+    LOGGER.info(
+        "全部完成：发现 %d，成功 %d，跳过 %d，失败 %d，耗时 %.2f 秒",
+        summary.discovered_shards,
+        summary.completed_shards,
+        summary.skipped_shards,
+        summary.failed_shards,
+        summary.elapsed_seconds,
     )
-    print("批次统计：%s" % (OUTPUT_DIR / "metadata" / "batch_summary.json"))
+    LOGGER.info("批次统计：%s", OUTPUT_DIR / "metadata" / "batch_summary.json")
 
 
-def _print_progress(result: ShardResult, summary: BatchSummary) -> None:
+def _log_progress(result: ShardResult, summary: BatchSummary) -> None:
     finished = summary.completed_shards + summary.skipped_shards + summary.failed_shards
     detail = ""
     if result.status == "failed":
         detail = " (%s: %s)" % (result.error_type, result.error)
-    print(
-        "[%d/%d] %-9s %s%s"
-        % (finished, summary.discovered_shards, result.status, result.relative_path, detail),
-        flush=True,
+    LOGGER.info(
+        "[%d/%d] %-9s %s%s",
+        finished,
+        summary.discovered_shards,
+        result.status,
+        result.relative_path,
+        detail,
     )
 
 

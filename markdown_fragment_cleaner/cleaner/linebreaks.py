@@ -3,8 +3,7 @@ from __future__ import annotations
 import re
 from typing import List, Sequence
 
-from .config import NormalizationConfig
-
+from cleaner.config import NormalizationConfig
 
 _KEY_VALUE_RE = re.compile(r"^\s*([^：:\n]{1,20})[：:]\s*\S")
 _INVALID_KEY_RE = re.compile(r"[，。！？；,.!?/\\]")
@@ -18,6 +17,7 @@ _INTRO_RE = re.compile(
     r"(?:如下(?:所示)?|包括(?:以下)?|分为(?:以下)?|主要有|步骤为|内容为)[：:]\s*$"
 )
 _TERMINAL_RE = re.compile(r"[。！？!?；;…）)】》」』”’\"']\s*$")
+MINIMUM_STRUCTURED_LINE_RATIO = 0.60
 
 
 class SoftbreakNormalizer:
@@ -45,11 +45,19 @@ class SoftbreakNormalizer:
             return False
 
         key_value_lines = sum(_looks_like_key_value(line) for line in nonempty)
-        if key_value_lines >= self.min_structured_lines and key_value_lines / len(nonempty) >= 0.60:
+        key_value_ratio = key_value_lines / len(nonempty)
+        if (
+            key_value_lines >= self.min_structured_lines
+            and key_value_ratio >= MINIMUM_STRUCTURED_LINE_RATIO
+        ):
             return True
 
         step_lines = sum(bool(_STEP_RE.match(line)) for line in nonempty)
-        if step_lines >= self.min_structured_lines and step_lines / len(nonempty) >= 0.60:
+        step_ratio = step_lines / len(nonempty)
+        if (
+            step_lines >= self.min_structured_lines
+            and step_ratio >= MINIMUM_STRUCTURED_LINE_RATIO
+        ):
             return True
 
         if _INTRO_RE.search(nonempty[0]) and len(nonempty) >= self.min_structured_lines:

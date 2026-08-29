@@ -7,17 +7,31 @@ from collections import Counter
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
-from .assemblers import FragmentAssembler, WholeDocumentAssembler
-from .chunker import SemanticChunker
-from .config import CleanerConfig
-from .markdown_parser import MarkdownDocumentParser
-from .models import Document, Fragment, PreparedBlock, WholeDocumentRecord
-from .normalizer import DocumentNormalizer, NormalizationStats
-from .rules import RuleEngine
-from .templates import TemplateIndex
-from .tokenization import ApproxTokenCounter, HuggingFaceTokenCounter, TokenCounter
+from cleaner.assemblers import FragmentAssembler, WholeDocumentAssembler
+from cleaner.chunker import SemanticChunker
+from cleaner.config import CleanerConfig
+from cleaner.markdown_parser import MarkdownDocumentParser
+from cleaner.models import Document, Fragment, PreparedBlock, WholeDocumentRecord
+from cleaner.normalizer import DocumentNormalizer, NormalizationStats
+from cleaner.rules import RuleEngine
+from cleaner.templates import TemplateIndex
+from cleaner.tokenization import (
+    ApproxTokenCounter,
+    HuggingFaceTokenCounter,
+    TokenCounter,
+)
 
 
 @dataclass
@@ -418,9 +432,11 @@ def _optional_path(value: Mapping[str, Any], dotted_path: Optional[str]) -> Any:
         return None
     current: Any = value
     for part in dotted_path.split("."):
-        if not isinstance(current, Mapping) or part not in current:
+        if not isinstance(current, Mapping):
             return None
-        current = current[part]
+        if part not in current:
+            return None
+        current = current.get(part)
     return current
 
 
@@ -467,7 +483,11 @@ def _write_statistics(config: CleanerConfig, summary: CleaningSummary, template_
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _write_preview(path: str, fragments: List[Fragment], summary: CleaningSummary) -> None:
+def _write_preview(
+    path: str,
+    fragments: Sequence[Fragment],
+    summary: CleaningSummary,
+) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     output = [
@@ -502,7 +522,7 @@ def _write_preview(path: str, fragments: List[Fragment], summary: CleaningSummar
 
 def _write_document_preview(
     path: str,
-    documents: List[WholeDocumentRecord],
+    documents: Sequence[WholeDocumentRecord],
     summary: CleaningSummary,
 ) -> None:
     target = Path(path)

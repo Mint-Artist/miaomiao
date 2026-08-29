@@ -5,13 +5,13 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple
 
-from .config import ChunkConfig
-from .models import Block, Document, Fragment, PreparedBlock, RuleFlag
-from .tokenization import ApproxTokenCounter, TokenCounter
-
+from cleaner.config import ChunkConfig
+from cleaner.models import Block, Document, Fragment, PreparedBlock, RuleFlag
+from cleaner.tokenization import ApproxTokenCounter, TokenCounter
 
 _INTRO_END_RE = re.compile(r"(?:[:：]|如下(?:所示)?[：:]?|包括(?:以下)?[：:]?|分为(?:以下)?[：:]?)\s*$")
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[。！？!?；;])|(?<=[.!?])\s+(?=[A-Z0-9\"'“‘])")
+MINIMUM_TAIL_GROUPS = 2
 
 
 @dataclass
@@ -79,33 +79,33 @@ class SemanticChunker:
 
         # Merge a short prose tail backward. Structured units are intentionally
         # not merged here because their formatting is part of their semantics.
-        if len(packed) >= 2:
+        if len(packed) >= MINIMUM_TAIL_GROUPS:
             tail = packed[-1]
             previous = packed[-2]
-            tail_is_structured = any(item.block.is_structured for item in tail)
-            previous_is_structured = any(item.block.is_structured for item in previous)
-            if (
-                not tail_is_structured
-                and not previous_is_structured
-                and self._count(tail) < self.config.target_min_tokens
-                and self._count(previous + tail) <= self.config.hard_max_tokens
-            ):
+            if self._can_merge_tail(previous, tail):
                 previous.extend(tail)
                 packed.pop()
         return packed
+
+    def _can_merge_tail(
+        self,
+        previous: Sequence[PreparedBlock],
+        tail: Sequence[PreparedBlock],
+    ) -> bool:
+        if any(item.block.is_structured for item in tail):
+            return False
+        if any(item.block.is_structured for item in previous):
+            return False
+        if self._count(tail) >= self.config.target_min_tokens:
+            return False
+        return self._count([*previous, *tail]) <= self.config.hard_max_tokens
 
     def _make_units(self, blocks: Sequence[PreparedBlock]) -> List[_Unit]:
         units: List[_Unit] = []
         index = 0
         while index < len(blocks):
             item = blocks[index]
-            if (
-                self.config.attach_intro_to_structured_block
-                and item.block.type in {"paragraph", "blockquote"}
-                and index + 1 < len(blocks)
-                and blocks[index + 1].block.is_structured
-                and _INTRO_END_RE.search(item.block.text.rstrip())
-            ):
+            if self._should_attach_intro(blocks, index):
                 pair = [item, blocks[index + 1]]
                 units.append(_Unit(pair, self._count(pair), True))
                 index += 2
@@ -113,6 +113,23 @@ class SemanticChunker:
             units.append(_Unit([item], self._count([item]), item.block.is_structured))
             index += 1
         return units
+
+    def _should_attach_intro(
+        self,
+        blocks: Sequence[PreparedBlock],
+        index: int,
+    ) -> bool:
+        if not self.config.attach_intro_to_structured_block:
+            return False
+        item = blocks[index]
+        if item.block.type not in {"paragraph", "blockquote"}:
+            return False
+        next_index = index + 1
+        if next_index >= len(blocks):
+            return False
+        if not blocks[next_index].block.is_structured:
+            return False
+        return bool(_INTRO_END_RE.search(item.block.text.rstrip()))
 
     def _split_oversized_prose(self, item: PreparedBlock) -> List[PreparedBlock]:
         block = item.block
@@ -175,12 +192,14 @@ class SemanticChunker:
                 if key not in seen:
                     flags.append(flag)
                     seen.add(key)
-        repairs = [
-            repair
-            for item in blocks
-            for repair in item.block.metadata.get("repairs", [])
-            if isinstance(repair, dict)
-        ]
+        repairs: List[dict] = []
+        for item in blocks:
+            block_repairs = item.block.metadata.get("repairs", [])
+            if not isinstance(block_repairs, list):
+                continue
+            for repair in block_repairs:
+                if isinstance(repair, dict):
+                    repairs.append(repair)
         metadata = {"chunker_version": "markdown-ast-section-v1"}
         if repairs:
             metadata["repairs"] = repairs

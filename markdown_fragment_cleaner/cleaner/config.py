@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
+MINIMUM_STRUCTURED_SOFTBREAK_LINES = 2
+
 
 @dataclass
 class InputConfig:
@@ -85,7 +87,7 @@ class NormalizationConfig:
     def validate(self) -> None:
         if self.softbreak_policy not in {"smart", "preserve", "unwrap"}:
             raise ValueError("softbreak_policy must be smart, preserve, or unwrap")
-        if self.min_structured_softbreak_lines < 2:
+        if self.min_structured_softbreak_lines < MINIMUM_STRUCTURED_SOFTBREAK_LINES:
             raise ValueError("min_structured_softbreak_lines must be >= 2")
         if self.min_duplicate_sentence_chars <= 0:
             raise ValueError("min_duplicate_sentence_chars must be positive")

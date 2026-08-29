@@ -3,11 +3,10 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import asdict, dataclass, replace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from .config import NormalizationConfig
-from .models import Block, Document
-
+from cleaner.config import NormalizationConfig
+from cleaner.models import Block, Document
 
 _PROSE_BLOCK_TYPES = {"paragraph", "html", "blockquote"}
 _EDGE_FORMAT_CHARS_RE = re.compile(r"^[\ufeff\u200b\u2060]+|[\ufeff\u200b\u2060]+$")
@@ -28,6 +27,7 @@ _CJK_BEFORE_PUNCTUATION_SPACE_RE = re.compile(
 _PUNCTUATION_BEFORE_CJK_SPACE_RE = re.compile(
     rf"(?<=[{re.escape(_CJK_PUNCTUATION)}])[ \t]+(?=[{_CJK_CHARACTER_CLASS}])"
 )
+MINIMUM_REPEATED_SENTENCE_COUNT = 2
 
 
 @dataclass
@@ -94,11 +94,7 @@ class DocumentNormalizer:
             if normalized is None:
                 continue
 
-            if (
-                self.config.deduplicate_adjacent_prose_blocks
-                and normalized_blocks
-                and _are_duplicate_adjacent_blocks(normalized_blocks[-1], normalized, self.config)
-            ):
+            if self._duplicates_previous_block(normalized_blocks, normalized):
                 previous = normalized_blocks[-1]
                 removed_chars = _meaningful_char_count(normalized.text)
                 normalized_blocks[-1] = _append_repair(
@@ -126,6 +122,21 @@ class DocumentNormalizer:
             stats,
         )
 
+    def _duplicates_previous_block(
+        self,
+        normalized_blocks: Sequence[Block],
+        candidate: Block,
+    ) -> bool:
+        if not self.config.deduplicate_adjacent_prose_blocks:
+            return False
+        if not normalized_blocks:
+            return False
+        return _are_duplicate_adjacent_blocks(
+            normalized_blocks[-1],
+            candidate,
+            self.config,
+        )
+
     def _normalize_block(self, block: Block) -> Tuple[Optional[Block], NormalizationStats]:
         stats = NormalizationStats()
         text = block.text
@@ -150,11 +161,13 @@ class DocumentNormalizer:
 
         if self.config.normalize_prose_spacing and block.type in _PROSE_BLOCK_TYPES:
             text, spacing = _normalize_prose_spacing(text)
-            if spacing["extra_spaces_removed"] or spacing["cjk_spaces_removed"]:
+            extra_spaces_removed = spacing.get("extra_spaces_removed", 0)
+            cjk_spaces_removed = spacing.get("cjk_spaces_removed", 0)
+            if extra_spaces_removed or cjk_spaces_removed:
                 stats.blocks_repaired = 1
                 stats.spacing_blocks_repaired = 1
-                stats.extra_spaces_removed = spacing["extra_spaces_removed"]
-                stats.cjk_spaces_removed = spacing["cjk_spaces_removed"]
+                stats.extra_spaces_removed = extra_spaces_removed
+                stats.cjk_spaces_removed = cjk_spaces_removed
                 repairs.append({"code": "prose_spacing_normalized", **spacing})
 
         if (
@@ -162,11 +175,12 @@ class DocumentNormalizer:
             and block.type in _PROSE_BLOCK_TYPES
         ):
             text, deduplication = _deduplicate_repeated_sentence_sequences(text, self.config)
-            if deduplication["removed_sequences"]:
+            removed_sequences = deduplication.get("removed_sequences", 0)
+            if removed_sequences:
                 stats.blocks_repaired = 1
-                stats.duplicate_sentence_sequences_removed = deduplication["removed_sequences"]
-                stats.duplicate_sentences_removed = deduplication["removed_sentences"]
-                stats.duplicate_chars_removed = deduplication["removed_chars"]
+                stats.duplicate_sentence_sequences_removed = removed_sequences
+                stats.duplicate_sentences_removed = deduplication.get("removed_sentences", 0)
+                stats.duplicate_chars_removed = deduplication.get("removed_chars", 0)
                 repairs.append(
                     {
                         "code": "repeated_sentence_sequences_removed",
@@ -236,7 +250,7 @@ def _deduplicate_repeated_sentence_sequences(
     config: NormalizationConfig,
 ) -> Tuple[str, Dict[str, int]]:
     sentences = [part for part in _SENTENCE_BOUNDARY_RE.split(text) if part.strip()]
-    if len(sentences) < 2:
+    if len(sentences) < MINIMUM_REPEATED_SENTENCE_COUNT:
         return text, {"removed_sequences": 0, "removed_sentences": 0, "removed_chars": 0}
 
     keys = [_canonical_text(sentence) for sentence in sentences]
@@ -307,10 +321,15 @@ def _are_duplicate_adjacent_blocks(
     return _canonical_text(left.text) == _canonical_text(right.text)
 
 
-def _append_repair(block: Block, repair: Dict[str, Any]) -> Block:
+def _append_repair(block: Block, repair: Mapping[str, Any]) -> Block:
     metadata = dict(block.metadata)
     existing = metadata.get("repairs", [])
-    metadata["repairs"] = list(existing) + [repair] if isinstance(existing, list) else [repair]
+    normalized_repair = dict(repair)
+    metadata["repairs"] = (
+        list(existing) + [normalized_repair]
+        if isinstance(existing, list)
+        else [normalized_repair]
+    )
     return replace(block, metadata=metadata)
 
 

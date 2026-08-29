@@ -145,7 +145,13 @@ class NormalizerTest(unittest.TestCase):
         self.assertEqual(block.text, first + second + final)
         self.assertEqual(result.stats.duplicate_sentence_sequences_removed, 1)
         self.assertEqual(result.stats.duplicate_sentences_removed, 2)
-        self.assertTrue(any(repair["code"] == "repeated_sentence_sequences_removed" for repair in block.metadata["repairs"]))
+        repairs = block.metadata.get("repairs", [])
+        self.assertTrue(
+            any(
+                repair.get("code", "") == "repeated_sentence_sequences_removed"
+                for repair in repairs
+            )
+        )
 
     def test_adjacent_duplicate_prose_blocks_keep_one_copy(self) -> None:
         paragraph = "该段落完整介绍索引构建流程，包括数据读取、字段规范化和结果校验。"
@@ -154,10 +160,8 @@ class NormalizerTest(unittest.TestCase):
 
         self.assertEqual(len(result.document.blocks), 1)
         self.assertEqual(result.stats.duplicate_blocks_removed, 1)
-        self.assertEqual(
-            result.document.blocks[0].metadata["repairs"][-1]["code"],
-            "adjacent_duplicate_block",
-        )
+        repairs = result.document.blocks[0].metadata.get("repairs", [])
+        self.assertEqual(repairs[-1].get("code", ""), "adjacent_duplicate_block")
 
     def test_near_duplicate_and_short_emphasis_are_not_removed(self) -> None:
         first = "系统支持全文搜索，用户可以按照时间筛选最终结果。"
@@ -177,7 +181,8 @@ class NormalizerTest(unittest.TestCase):
         self.assertEqual(result.stats.spacing_blocks_repaired, 1)
         self.assertEqual(result.stats.extra_spaces_removed, 1)
         self.assertGreaterEqual(result.stats.cjk_spaces_removed, 5)
-        self.assertEqual(block.metadata["repairs"][-1]["code"], "prose_spacing_normalized")
+        repairs = block.metadata.get("repairs", [])
+        self.assertEqual(repairs[-1].get("code", ""), "prose_spacing_normalized")
 
     def test_list_and_table_spacing_are_not_rewritten(self) -> None:
         markdown = """- 中 文列表项
@@ -273,7 +278,9 @@ class PipelineTest(unittest.TestCase):
             self.assertEqual(summary.invalid_json_rows, 1)
             self.assertEqual(summary.template_blocks_rejected, 4)
             self.assertEqual(len(accepted), 4)
-            self.assertTrue(all("版权所有" not in value["content"] for value in accepted))
+            self.assertTrue(
+                all("版权所有" not in value.get("content", "") for value in accepted)
+            )
             self.assertTrue(any(value.get("reason") == "invalid_json" for value in rejected))
             self.assertTrue(Path(output.preview_path).exists())
 
@@ -314,7 +321,11 @@ class PipelineTest(unittest.TestCase):
             clean_jsonl(config)
             review = _read_jsonl(output.review_path)
             self.assertEqual(len(review), 1)
-            self.assertIn("context_dependent_start", {flag["code"] for flag in review[0]["flags"]})
+            flags = review[0].get("flags", [])
+            self.assertIn(
+                "context_dependent_start",
+                {flag.get("code", "") for flag in flags},
+            )
 
     def test_pipeline_repairs_repeated_sentences_before_chunking_and_reports_stats(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -355,11 +366,13 @@ class PipelineTest(unittest.TestCase):
             accepted = _read_jsonl(output.accepted_path)
 
             self.assertEqual(len(accepted), 1)
-            self.assertEqual(accepted[0]["content"], first + second + final)
+            self.assertEqual(accepted[0].get("content", ""), first + second + final)
             self.assertEqual(summary.duplicate_sentence_sequences_removed, 1)
             self.assertEqual(summary.duplicate_sentences_removed, 2)
+            metadata = accepted[0].get("metadata", {})
+            repairs = metadata.get("repairs", [])
             self.assertEqual(
-                accepted[0]["metadata"]["repairs"][0]["code"],
+                repairs[0].get("code", ""),
                 "repeated_sentence_sequences_removed",
             )
 
@@ -420,18 +433,26 @@ class PipelineTest(unittest.TestCase):
             self.assertTrue(all("record_type" not in fragment for fragment in fragments))
             self.assertEqual(len(documents), 1)
             whole = documents[0]
-            self.assertEqual(whole["record_type"], "whole_document")
-            self.assertIn("姓名：张三\n电话：13800000000\n地址：上海", whole["content"])
-            self.assertIn("\n\n", whole["content"])
-            self.assertNotIn("用户信息", whole["content"])
-            self.assertNotIn("检索流程", whole["content"])
-            self.assertNotIn("上一篇", whole["content"])
-            self.assertEqual([section["heading_path"] for section in whole["sections"]], [
+            self.assertEqual(whole.get("record_type", ""), "whole_document")
+            content = whole.get("content", "")
+            self.assertIn("姓名：张三\n电话：13800000000\n地址：上海", content)
+            self.assertIn("\n\n", content)
+            self.assertNotIn("用户信息", content)
+            self.assertNotIn("检索流程", content)
+            self.assertNotIn("上一篇", content)
+            sections = whole.get("sections", [])
+            self.assertEqual([section.get("heading_path", []) for section in sections], [
                 ["用户信息"],
                 ["用户信息", "检索流程"],
             ])
-            self.assertTrue(all(section["start_char"] < section["end_char"] for section in whole["sections"]))
-            self.assertEqual(whole["removed_blocks"][0]["reason"], "hard_rule")
+            self.assertTrue(
+                all(
+                    section.get("start_char", 0) < section.get("end_char", 0)
+                    for section in sections
+                )
+            )
+            removed_blocks = whole.get("removed_blocks", [])
+            self.assertEqual(removed_blocks[0].get("reason", ""), "hard_rule")
             self.assertEqual(summary.rule_blocks_rejected, 1)
             self.assertEqual(summary.accepted_documents + summary.review_documents, 1)
 
@@ -464,9 +485,14 @@ class PipelineTest(unittest.TestCase):
             review = _read_jsonl(output.document_review_path)
 
             self.assertEqual(len(review), 1)
-            self.assertEqual(review[0]["content"], prose)
-            self.assertGreater(review[0]["token_count"], 20)
-            self.assertIn("whole_document_too_long", {flag["code"] for flag in review[0]["flags"]})
+            review_record = review[0]
+            self.assertEqual(review_record.get("content", ""), prose)
+            self.assertGreater(review_record.get("token_count", 0), 20)
+            flags = review_record.get("flags", [])
+            self.assertIn(
+                "whole_document_too_long",
+                {flag.get("code", "") for flag in flags},
+            )
             self.assertEqual(summary.review_documents, 1)
             self.assertFalse(Path(output.accepted_path).exists())
             self.assertFalse(Path(output.review_path).exists())
@@ -497,11 +523,13 @@ class PipelineTest(unittest.TestCase):
             rejected = _read_jsonl(output.document_rejected_path)
 
             self.assertEqual(len(rejected), 1)
-            self.assertEqual(rejected[0]["kind"], "whole_document")
-            self.assertEqual(rejected[0]["document"]["content"], "这是一段完整但很短的正文。")
+            rejected_record = rejected[0]
+            self.assertEqual(rejected_record.get("kind", ""), "whole_document")
+            document = rejected_record.get("document", {})
+            self.assertEqual(document.get("content", ""), "这是一段完整但很短的正文。")
             self.assertIn(
                 "too_short",
-                {flag["code"] for flag in rejected[0]["document"]["flags"]},
+                {flag.get("code", "") for flag in document.get("flags", [])},
             )
             self.assertEqual(summary.rejected_documents, 1)
 

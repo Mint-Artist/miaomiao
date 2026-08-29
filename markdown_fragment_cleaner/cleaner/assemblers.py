@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from .chunker import SemanticChunker
-from .models import (
+from cleaner.chunker import SemanticChunker
+from cleaner.models import (
     Document,
     Fragment,
     PreparedBlock,
@@ -12,7 +12,7 @@ from .models import (
     SectionSpan,
     WholeDocumentRecord,
 )
-from .tokenization import TokenCounter
+from cleaner.tokenization import TokenCounter
 
 
 class FragmentAssembler:
@@ -39,9 +39,15 @@ class WholeDocumentAssembler:
         self,
         document: Document,
         prepared: Sequence[Optional[PreparedBlock]],
-        removed_blocks: Sequence[Dict[str, Any]],
+        removed_blocks: Sequence[Mapping[str, Any]],
     ) -> Optional[WholeDocumentRecord]:
-        kept = [item for item in prepared if item is not None and item.block.text.strip()]
+        kept: List[PreparedBlock] = []
+        for item in prepared:
+            if item is None:
+                continue
+            if not item.block.text.strip():
+                continue
+            kept.append(item)
         if not kept:
             return None
 
@@ -110,7 +116,7 @@ class WholeDocumentAssembler:
             end_line=max(item.block.end_line for item in kept),
             source_row=document.source_row,
             sections=sections,
-            removed_blocks=list(removed_blocks),
+            removed_blocks=[dict(item) for item in removed_blocks],
             flags=flags,
             metadata=metadata,
         )

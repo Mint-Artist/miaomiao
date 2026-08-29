@@ -11,9 +11,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from .config import TemplateConfig
-from .models import Block, Document
-
+from cleaner.config import TemplateConfig
+from cleaner.models import Block, Document
 
 _URL_RE = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
@@ -23,6 +22,10 @@ _DATE_RE = re.compile(
 _LONG_NUMBER_RE = re.compile(r"\b\d{2,}\b")
 _HEX_ID_RE = re.compile(r"\b[0-9a-f]{8,}\b", re.IGNORECASE)
 _SPACE_RE = re.compile(r"\s+")
+TEMPLATE_DIGEST_SIZE = 12
+EDGE_BLOCK_DIVISOR = 4
+EXAMPLE_CHAR_LIMIT = 500
+DATABASE_COMMIT_INTERVAL = 1000
 
 
 def canonical_host(url: str) -> str:
@@ -44,7 +47,10 @@ def normalize_for_template(text: str) -> str:
 
 
 def fingerprint(value: str) -> str:
-    return hashlib.blake2b(value.encode("utf-8"), digest_size=12).hexdigest()
+    return hashlib.blake2b(
+        value.encode("utf-8"),
+        digest_size=TEMPLATE_DIGEST_SIZE,
+    ).hexdigest()
 
 
 @dataclass
@@ -118,7 +124,10 @@ class TemplateIndex:
                     )
 
                     last_index = len(blocks) - 1
-                    edge_width = min(self.config.edge_blocks, max(1, len(blocks) // 4))
+                    edge_width = min(
+                        self.config.edge_blocks,
+                        max(1, len(blocks) // EDGE_BLOCK_DIVISOR),
+                    )
                     per_document: Dict[str, Tuple[str, str, int]] = {}
                     for index, block in enumerate(blocks):
                         normalized = normalize_for_template(block.text)
@@ -127,8 +136,12 @@ class TemplateIndex:
                         block_fingerprint = fingerprint(normalized)
                         is_edge = int(index < edge_width or index > last_index - edge_width)
                         previous = per_document.get(block_fingerprint)
-                        if previous is None or (is_edge and not previous[2]):
-                            per_document[block_fingerprint] = (normalized, block.text[:500], is_edge)
+                        if _should_replace_example(previous, is_edge):
+                            per_document[block_fingerprint] = (
+                                normalized,
+                                block.text[:EXAMPLE_CHAR_LIMIT],
+                                is_edge,
+                            )
 
                     cursor.executemany(
                         """
@@ -145,7 +158,7 @@ class TemplateIndex:
                         ],
                     )
                     processed += 1
-                    if processed % 1000 == 0:
+                    if processed % DATABASE_COMMIT_INTERVAL == 0:
                         connection.commit()
                 connection.commit()
                 self.entries = self._select_entries(connection)
@@ -191,15 +204,12 @@ class TemplateIndex:
         for host, key, normalized, example, doc_count, edge_count, host_count in rows:
             document_fraction = doc_count / host_count
             edge_ratio = edge_count / doc_count
-            reason = ""
-            if document_fraction >= self.config.min_document_fraction and edge_ratio >= self.config.min_edge_ratio:
-                reason = "repeated_at_page_edge"
-            elif (
-                document_fraction >= self.config.ubiquitous_document_fraction
-                and len(normalized) <= self.config.max_ubiquitous_chars
-                and edge_ratio >= self.config.min_ubiquitous_edge_ratio
-            ):
-                reason = "ubiquitous_short_block"
+            reason = _template_reason(
+                self.config,
+                document_fraction,
+                edge_ratio,
+                len(normalized),
+            )
             if reason:
                 entries.append(
                     TemplateEntry(
@@ -214,6 +224,35 @@ class TemplateIndex:
                     )
                 )
         return entries
+
+
+def _should_replace_example(
+    previous: Optional[Tuple[str, str, int]],
+    is_edge: int,
+) -> bool:
+    if previous is None:
+        return True
+    if not is_edge:
+        return False
+    return not previous[2]
+
+
+def _template_reason(
+    config: TemplateConfig,
+    document_fraction: float,
+    edge_ratio: float,
+    normalized_length: int,
+) -> str:
+    if document_fraction >= config.min_document_fraction:
+        if edge_ratio >= config.min_edge_ratio:
+            return "repeated_at_page_edge"
+    if document_fraction < config.ubiquitous_document_fraction:
+        return ""
+    if normalized_length > config.max_ubiquitous_chars:
+        return ""
+    if edge_ratio < config.min_ubiquitous_edge_ratio:
+        return ""
+    return "ubiquitous_short_block"
 
 
 def _initialize_database(connection: sqlite3.Connection) -> None:

@@ -51,8 +51,11 @@ class BatchCleaningTest(unittest.TestCase):
             self.assertFalse((outputs / "fragments").exists())
             self.assertFalse((outputs / "metadata" / "templates").exists())
             self.assertFalse((outputs / "metadata" / "previews").exists())
-            self.assertEqual(_read_jsonl(first_output)[0]["doc_id"], "part-000:row-1")
-            self.assertEqual(_read_jsonl(second_output)[0]["doc_id"], "news/part-001:row-1")
+            self.assertEqual(_read_jsonl(first_output)[0].get("doc_id", ""), "part-000:row-1")
+            self.assertEqual(
+                _read_jsonl(second_output)[0].get("doc_id", ""),
+                "news/part-001:row-1",
+            )
             self.assertTrue(
                 (outputs / "metadata" / "completed" / "part-000.done.json").is_file()
             )
@@ -78,7 +81,10 @@ class BatchCleaningTest(unittest.TestCase):
             changed = clean_jsonl_shards(config, batch)
             self.assertEqual(changed.completed_shards, 1)
             self.assertEqual(changed.skipped_shards, 1)
-            self.assertIn("修改后的第二篇", _read_jsonl(second_output)[0]["content"])
+            self.assertIn(
+                "修改后的第二篇",
+                _read_jsonl(second_output)[0].get("content", ""),
+            )
 
     def test_both_mode_writes_fragment_and_document_shards(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -106,8 +112,10 @@ class BatchCleaningTest(unittest.TestCase):
             batch_summary = json.loads(
                 (outputs / "metadata" / "batch_summary.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(batch_summary["summary"]["completed_shards"], 1)
-            self.assertEqual(batch_summary["summary"]["aggregate"]["documents"], 1)
+            summary_value = batch_summary.get("summary", {})
+            self.assertEqual(summary_value.get("completed_shards", 0), 1)
+            aggregate = summary_value.get("aggregate", {})
+            self.assertEqual(aggregate.get("documents", 0), 1)
 
 
 def _base_config(output_mode: str) -> CleanerConfig:

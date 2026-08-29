@@ -4,15 +4,14 @@ import html
 import re
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
-from .config import ContentPolicy, NormalizationConfig
-from .linebreaks import SoftbreakNormalizer
-from .models import Block, Document
-
+from cleaner.config import ContentPolicy, NormalizationConfig
+from cleaner.linebreaks import SoftbreakNormalizer
+from cleaner.models import Block, Document
 
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s)\]}>]+", re.IGNORECASE)
 
@@ -29,7 +28,11 @@ class _VisibleHTMLParser(HTMLParser):
         self.parts: List[str] = []
         self.hidden_depth = 0
 
-    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: Sequence[Tuple[str, Optional[str]]],
+    ) -> None:
         if tag.lower() in {"script", "style", "noscript", "svg"}:
             self.hidden_depth += 1
         elif tag.lower() in {"br", "p", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}:
@@ -74,7 +77,7 @@ class MarkdownDocumentParser:
         url: str = "",
         title: str = "",
         source_row: int = 0,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Mapping[str, Any]] = None,
     ) -> Document:
         source = markdown.replace("\r\n", "\n").replace("\r", "\n")
         parse_source = _mask_front_matter(source)
@@ -126,7 +129,7 @@ class MarkdownDocumentParser:
         lines: Sequence[str],
         doc_id: str,
         ordinal: int,
-        heading_path: List[str],
+        heading_path: Sequence[str],
     ) -> Optional[Block]:
         token = node.token
         if token is None:
@@ -226,7 +229,13 @@ def _render_inline_descendants(
     policy: ContentPolicy,
     softbreaks: SoftbreakNormalizer,
 ) -> str:
-    inline_nodes = [child for child in _walk(node) if child.token and child.token.type == "inline"]
+    inline_nodes: List[_Node] = []
+    for child in _walk(node):
+        if child.token is None:
+            continue
+        if child.token.type != "inline":
+            continue
+        inline_nodes.append(child)
     return "\n".join(_render_inline(node.token, policy, softbreaks) for node in inline_nodes).strip()
 
 

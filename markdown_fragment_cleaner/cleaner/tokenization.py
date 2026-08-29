@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Protocol
 
-
 _APPROX_TOKEN_RE = re.compile(
     r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|[A-Za-z0-9]+(?:['._-][A-Za-z0-9]+)*|[^\s]",
     re.UNICODE,

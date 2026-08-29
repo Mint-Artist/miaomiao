@@ -11,8 +11,8 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence
 
-from .config import CleanerConfig, OutputConfig
-from .pipeline import CleaningSummary, clean_jsonl
+from cleaner.config import CleanerConfig, OutputConfig
+from cleaner.pipeline import CleaningSummary, clean_jsonl
 
 
 @dataclass(frozen=True)
@@ -442,7 +442,7 @@ def _summary_from_dict(value: Mapping[str, Any]) -> CleaningSummary:
         if item.name not in value:
             continue
         current = getattr(summary, item.name)
-        incoming = value[item.name]
+        incoming = value.get(item.name)
         if isinstance(current, Counter):
             if isinstance(incoming, Mapping):
                 current.update(incoming)

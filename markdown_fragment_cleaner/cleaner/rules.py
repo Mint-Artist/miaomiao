@@ -5,16 +5,26 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple
 
-from .config import AssemblyConfig, ContentPolicy, RuleConfig
-from .models import Block, Fragment, RuleFlag, WholeDocumentRecord
-from .tokenization import ApproxTokenCounter, TokenCounter
-
+from cleaner.config import AssemblyConfig, ContentPolicy, RuleConfig
+from cleaner.models import Block, Fragment, RuleFlag, WholeDocumentRecord
+from cleaner.tokenization import ApproxTokenCounter, TokenCounter
 
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s)\]}>]+", re.IGNORECASE)
 _CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 _MARKDOWN_ARTIFACT_RE = re.compile(r"(?:<[^>]{1,200}>|\]\([^)]{0,500}\)|!\[[^]]*\]|`{3,}|#{2,})")
 _TERMINAL_RE = re.compile(r"[。！？!?；;…）)】》」』”’\"']\s*$")
 _INCOMPLETE_END_RE = re.compile(r"(?:[:：,，、]|如下(?:所示)?[：:]?|分别为[：:]?|包括(?:以下)?[：:]?)\s*$")
+_LATIN_WORD_RE = re.compile(r"[A-Za-z]{3,}")
+_HEADING_PUNCTUATION_RE = re.compile(r"[，,：:]")
+MINIMUM_NAVIGATION_LINKS = 3
+MINIMUM_NAVIGATION_LINK_RATIO = 0.6
+MAXIMUM_NAVIGATION_LINK_CHARS = 50
+MINIMUM_VISIBLE_HTML_CHARS = 10
+MINIMUM_TERMINAL_PROSE_CHARS = 40
+MINIMUM_LANGUAGE_CONTENT_CHARS = 30
+MINIMUM_DUPLICATE_LINES = 3
+UNCLOSED_BRACKET_DIFFERENCE = 2
+MAXIMUM_STANDALONE_HEADING_TOKENS = 30
 _BOILERPLATE_PATTERNS = (
     re.compile(r"^(?:登录|注册|退出登录|返回首页|网站地图|联系我们|加入收藏|设为首页)(?:\s*[|·/｜]\s*.*)?$"),
     re.compile(r"^(?:上一篇|下一篇|上一页|下一页|返回顶部|相关推荐|相关(?:文章|内容|链接))(?:\s*[:：].*)?$"),
@@ -57,10 +67,10 @@ class RuleEngine:
 
         link_count = int(block.metadata.get("link_count", 0))
         line_count = max(1, len([line for line in block.text.splitlines() if line.strip()]))
-        if link_count >= 3 and link_count >= line_count * 0.6 and len(normalized) / link_count < 50:
+        if _is_navigation_link_list(link_count, line_count, len(normalized)):
             flags.append(RuleFlag("navigation_link_list", "hard", "short link-dense block resembles navigation"))
 
-        if block.type == "html" and len(normalized) < 10:
+        if block.type == "html" and len(normalized) < MINIMUM_VISIBLE_HTML_CHARS:
             flags.append(RuleFlag("empty_html", "hard", "HTML block has almost no visible content"))
         return RuleResult(_decision(flags), _deduplicate(flags))
 
@@ -83,12 +93,7 @@ class RuleEngine:
             flags.append(RuleFlag("context_dependent_start", "soft", "likely depends on preceding context"))
         if _INCOMPLETE_END_RE.search(stripped):
             flags.append(RuleFlag("incomplete_end", "soft", "ends with an introducer or non-terminal punctuation"))
-        elif (
-            fragment.block_types
-            and fragment.block_types[-1] in {"paragraph", "html"}
-            and len(stripped) >= 40
-            and not _TERMINAL_RE.search(stripped)
-        ):
+        elif _has_non_terminal_prose_end(stripped, fragment.block_types):
             flags.append(RuleFlag("non_terminal_end", "soft", "prose does not end with terminal punctuation"))
         if _has_obvious_unclosed_brackets(stripped):
             flags.append(RuleFlag("unclosed_brackets", "soft", "bracket counts suggest truncation"))
@@ -134,12 +139,7 @@ class RuleEngine:
             flags.append(RuleFlag("context_dependent_start", "soft", "likely depends on preceding context"))
         if _INCOMPLETE_END_RE.search(stripped):
             flags.append(RuleFlag("incomplete_end", "soft", "ends with an introducer or non-terminal punctuation"))
-        elif (
-            document.block_types
-            and document.block_types[-1] in {"paragraph", "html"}
-            and len(stripped) >= 40
-            and not _TERMINAL_RE.search(stripped)
-        ):
+        elif _has_non_terminal_prose_end(stripped, document.block_types):
             flags.append(RuleFlag("non_terminal_end", "soft", "prose does not end with terminal punctuation"))
         if _has_obvious_unclosed_brackets(stripped):
             flags.append(RuleFlag("unclosed_brackets", "soft", "bracket counts suggest truncation"))
@@ -169,15 +169,11 @@ class RuleEngine:
         if replacement_count > self.config.max_replacement_chars or replacement_ratio > self.config.max_replacement_ratio:
             flags.append(RuleFlag("replacement_characters", "hard", "too many U+FFFD characters", replacement_ratio))
 
-        control_count = sum(
-            1 for char in stripped
-            if unicodedata.category(char) == "Cc" and char not in {"\n", "\r", "\t"}
-        )
+        control_count = _count_disallowed_control_characters(stripped)
         control_ratio = control_count / length
         if control_ratio > self.config.max_control_ratio:
             flags.append(RuleFlag("control_characters", "hard", "too many control characters", control_ratio))
 
-        raw_length = max(1, len(raw_text))
         # Link destinations are intentionally removed by the AST renderer.
         # Only URLs surviving in visible output should influence quality.
         url_chars = sum(len(match.group(0)) for match in _URL_RE.finditer(stripped))
@@ -205,7 +201,7 @@ class RuleEngine:
 
         visible = sum(1 for char in stripped if not char.isspace())
         cjk_count = len(_CJK_RE.findall(stripped))
-        if visible >= 30 and cjk_count == 0 and not re.search(r"[A-Za-z]{3,}", stripped):
+        if _lacks_language_content(stripped, visible, cjk_count):
             flags.append(RuleFlag("no_language_content", "hard", "no meaningful CJK or Latin word content"))
         return flags
 
@@ -216,6 +212,47 @@ def _decision(flags: Sequence[RuleFlag]) -> str:
     if any(flag.severity == "soft" for flag in flags):
         return "review"
     return "accepted"
+
+
+def _count_disallowed_control_characters(text: str) -> int:
+    count = 0
+    for char in text:
+        if unicodedata.category(char) != "Cc":
+            continue
+        if char in {"\n", "\r", "\t"}:
+            continue
+        count += 1
+    return count
+
+
+def _is_navigation_link_list(
+    link_count: int,
+    line_count: int,
+    text_length: int,
+) -> bool:
+    if link_count < MINIMUM_NAVIGATION_LINKS:
+        return False
+    if link_count < line_count * MINIMUM_NAVIGATION_LINK_RATIO:
+        return False
+    return text_length / link_count < MAXIMUM_NAVIGATION_LINK_CHARS
+
+
+def _has_non_terminal_prose_end(text: str, block_types: Sequence[str]) -> bool:
+    if not block_types:
+        return False
+    if block_types[-1] not in {"paragraph", "html"}:
+        return False
+    if len(text) < MINIMUM_TERMINAL_PROSE_CHARS:
+        return False
+    return _TERMINAL_RE.search(text) is None
+
+
+def _lacks_language_content(text: str, visible: int, cjk_count: int) -> bool:
+    if visible < MINIMUM_LANGUAGE_CONTENT_CHARS:
+        return False
+    if cjk_count:
+        return False
+    return _LATIN_WORD_RE.search(text) is None
 
 
 def _deduplicate(flags: Iterable[RuleFlag]) -> List[RuleFlag]:
@@ -232,7 +269,7 @@ def _deduplicate(flags: Iterable[RuleFlag]) -> List[RuleFlag]:
 def _duplicate_line_ratio(text: str) -> float:
     lines = [re.sub(r"\s+", " ", line).strip().lower() for line in text.splitlines()]
     lines = [line for line in lines if line]
-    if len(lines) < 3:
+    if len(lines) < MINIMUM_DUPLICATE_LINES:
         return 0.0
     return (len(lines) - len(set(lines))) / len(lines)
 
@@ -249,10 +286,19 @@ def _has_obvious_unclosed_brackets(text: str) -> bool:
     pairs: Tuple[Tuple[str, str], ...] = (
         ("（", "）"), ("(", ")"), ("【", "】"), ("[", "]"), ("《", "》"), ("“", "”"),
     )
-    return any(abs(text.count(left) - text.count(right)) >= 2 for left, right in pairs)
+    return any(
+        abs(text.count(left) - text.count(right)) >= UNCLOSED_BRACKET_DIFFERENCE
+        for left, right in pairs
+    )
 
 
 def _looks_like_standalone_heading(text: str, tokens: int, block_types: Sequence[str]) -> bool:
-    if tokens > 30 or "\n" in text or any(kind in {"list", "table"} for kind in block_types):
+    if tokens > MAXIMUM_STANDALONE_HEADING_TOKENS:
         return False
-    return not _TERMINAL_RE.search(text) and not re.search(r"[，,：:]", text)
+    if "\n" in text:
+        return False
+    if any(kind in {"list", "table"} for kind in block_types):
+        return False
+    if _TERMINAL_RE.search(text):
+        return False
+    return _HEADING_PUNCTUATION_RE.search(text) is None
