@@ -311,3 +311,43 @@ LoRA 会显著减少可训练参数和优化器状态，但 8192 tokens 的双�
 ```bash
 python -m unittest discover -s bidirlm_BIO_finetune/tests -v
 ```
+
+## 模型选择指标与新增验证指标
+
+`best/` 的保存与早停默认由 `--best-metric span_f1` 驱动（可选
+`span_f1_tolerant`、`content_f1`、`loss`）。验证 loss 会因为置信度校准变差而
+上升，但 Viterbi 解码只取 argmax 路径，span 质量仍可能在提升，因此不再用
+loss 选模型。
+
+`metrics.jsonl` 的 validation 字段新增：
+
+- `token_f1_O` / `token_f1_B` / `token_f1_I`：三类各自的 F1，B 类稀少，
+  单独观察才能发现边界起点问题。
+- `b_precision` / `b_recall`：B 类查准/查全，分别对应过切与欠切。
+- `span_f1_tolerant`：边界偏移不超过 `boundary_tolerance`（默认 2 个 token）
+  也计为命中的宽松 span F1。它与 `span_f1` 的差值近似等于边界后处理可以
+  白拿的空间。
+
+旧格式 checkpoint（只记录 `best_validation_loss`）可以直接
+`--resume-from-checkpoint` 续训：判据不同时会自动重置 best 与 patience，
+不会立刻触发早停。
+
+## 推理边界后处理
+
+针对"段尾残留开括号、段首/段尾丢失少量前后文"两类边界错误：
+
+- 吸附（snap）：边界在 `--snap-window`（默认 5）个字符内移动到最近的句子
+  边界，方向优先找回被丢掉的原文。
+- 修剪（trim）：剥离边缘空白、段尾未配对的开括号/开引号、段首未配对的
+  闭括号/闭引号。
+
+推理时加 `--postprocess` 即可在输出中追加 `postprocessed_char_spans`、
+`postprocessed_segments`、`postprocessed_refined_text` 字段，原有字段不变。
+
+已有的预测 JSONL 不必重跑 GPU 推理，可以离线处理：
+
+```bash
+python -m bidirlm_BIO_finetune.postprocess \
+  --input outputs/bidirlm_lora_single/raw_predictions.jsonl \
+  --output outputs/bidirlm_lora_single/raw_predictions.post.jsonl
+```

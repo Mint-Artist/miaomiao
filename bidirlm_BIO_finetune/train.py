@@ -52,6 +52,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--early-stopping-patience", type=int, default=3)
+    parser.add_argument(
+        "--best-metric",
+        choices=("span_f1", "span_f1_tolerant", "content_f1", "loss"),
+        default="span_f1",
+        help=(
+            "validation metric that selects best/ and drives early stopping; "
+            "validation loss can rise from confidence miscalibration while "
+            "Viterbi span quality still improves, so span_f1 is the default"
+        ),
+    )
     parser.add_argument("--attention-implementation", default="eager")
     parser.add_argument(
         "--save-steps",
@@ -163,7 +173,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     resume_batch_index = 0
     resume_running_stats = (0.0, 0.0, 0.0, 0)
     global_step = 0
-    best_validation_loss = float("inf")
+    best_metric_value = initial_best_value(args.best_metric)
     patience = 0
     if args.resume_from_checkpoint:
         state = torch.load(
@@ -193,8 +203,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             start_epoch = int(state["epoch"]) + 1
         global_step = int(state["global_step"])
-        best_validation_loss = float(state.get("best_validation_loss", float("inf")))
-        patience = int(state.get("patience", 0))
+        saved_metric_name = state.get("best_metric_name")
+        if saved_metric_name == args.best_metric:
+            best_metric_value = float(state["best_metric_value"])
+            patience = int(state.get("patience", 0))
+        else:
+            # The checkpoint tracked a different metric (or predates
+            # --best-metric and only stored best_validation_loss), so restart
+            # best/patience tracking instead of stopping immediately.
+            if is_main:
+                print(
+                    "resume: checkpoint tracked "
+                    f"{saved_metric_name or 'best_validation_loss'}; restarting "
+                    f"best/patience for --best-metric {args.best_metric}",
+                    flush=True,
+                )
 
     if is_main:
         output_dir = Path(args.output_dir)
@@ -292,7 +315,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                             scaler=scaler,
                             epoch=epoch,
                             global_step=global_step,
-                            best_validation_loss=best_validation_loss,
+                            best_metric_name=args.best_metric,
+                            best_metric_value=best_metric_value,
                             patience=patience,
                             resume_epoch=next_epoch,
                             resume_batch_index=next_batch_index,
@@ -328,10 +352,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if is_main:
             assert gathered_validation is not None
             validation = merge_evaluation_parts(gathered_validation)
-            validation_loss = validation["loss"]
-            improved = validation_loss < best_validation_loss
+            validation_metric = float(validation[args.best_metric])
+            improved = metric_improved(
+                args.best_metric, validation_metric, best_metric_value
+            )
             if improved:
-                best_validation_loss = validation_loss
+                best_metric_value = validation_metric
                 patience = 0
                 unwrapped.save_artifacts(Path(args.output_dir) / "best", tokenizer)
             else:
@@ -345,7 +371,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "train_classification_loss": averages[1],
                 "train_transition_loss": averages[2],
                 "validation": validation,
-                "best_validation_loss": best_validation_loss,
+                "best_metric_name": args.best_metric,
+                "best_metric_value": best_metric_value,
                 "early_stopping_patience": patience,
             }
             print(json.dumps(record, ensure_ascii=False), flush=True)
@@ -363,7 +390,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 scaler=scaler,
                 epoch=epoch,
                 global_step=global_step,
-                best_validation_loss=best_validation_loss,
+                best_metric_name=args.best_metric,
+                best_metric_value=best_metric_value,
                 patience=patience,
                 resume_epoch=epoch + 1,
                 resume_batch_index=0,
@@ -434,6 +462,14 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--save-total-limit must be non-negative")
 
 
+def initial_best_value(metric_name: str) -> float:
+    return float("inf") if metric_name == "loss" else float("-inf")
+
+
+def metric_improved(metric_name: str, value: float, best: float) -> bool:
+    return value < best if metric_name == "loss" else value > best
+
+
 def next_training_position(
     epoch: int, batch_index: int, batches_in_epoch: int
 ) -> tuple[int, int]:
@@ -452,7 +488,8 @@ def save_training_checkpoint(
     scaler: torch.cuda.amp.GradScaler,
     epoch: int,
     global_step: int,
-    best_validation_loss: float,
+    best_metric_name: str,
+    best_metric_value: float,
     patience: int,
     resume_epoch: int,
     resume_batch_index: int,
@@ -467,7 +504,8 @@ def save_training_checkpoint(
         {
             "epoch": epoch,
             "global_step": global_step,
-            "best_validation_loss": best_validation_loss,
+            "best_metric_name": best_metric_name,
+            "best_metric_value": best_metric_value,
             "patience": patience,
             "resume_epoch": resume_epoch,
             "resume_batch_index": resume_batch_index,

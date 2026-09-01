@@ -62,6 +62,27 @@ class DataAndDecodingTests(unittest.TestCase):
         self.assertEqual(metrics["span_f1"], 1.0)
         self.assertEqual(bio_spans(labels[0].tolist()), [(1, 3), (4, 6)])
 
+    def test_metrics_report_per_label_and_tolerant_span_f1(self):
+        gold = torch.tensor([[0, 1, 2, 2, 0, 0]])
+        predicted = torch.tensor([[0, 0, 1, 2, 2, 0]])
+        metrics = compute_bio_metrics(predicted, gold)
+        self.assertEqual(metrics["span_f1"], 0.0)
+        self.assertEqual(metrics["span_f1_tolerant"], 1.0)
+        self.assertEqual(metrics["b_precision"], 0.0)
+        self.assertEqual(metrics["b_recall"], 0.0)
+        self.assertEqual(metrics["token_f1_B"], 0.0)
+        strict = compute_bio_metrics(predicted, gold, boundary_tolerance=0)
+        self.assertEqual(strict["span_f1_tolerant"], strict["span_f1"])
+
+    def test_per_label_f1_matches_exact_prediction(self):
+        labels = torch.tensor([[0, 1, 2, 0, 1, 2]])
+        metrics = compute_bio_metrics(labels, labels)
+        self.assertEqual(metrics["token_f1_O"], 1.0)
+        self.assertEqual(metrics["token_f1_B"], 1.0)
+        self.assertEqual(metrics["token_f1_I"], 1.0)
+        self.assertEqual(metrics["b_precision"], 1.0)
+        self.assertEqual(metrics["b_recall"], 1.0)
+
     def test_pad_and_cat_handles_dynamic_batch_widths(self):
         result = pad_and_cat([torch.tensor([[1, 2]]), torch.tensor([[0]])])
         self.assertEqual(result.tolist(), [[1, 2], [0, -100]])

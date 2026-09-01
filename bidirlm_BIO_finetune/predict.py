@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, Dataset
 from .data import BioDataCollator, validate_record
 from .decoding import compute_bio_metrics, pad_and_cat, viterbi_decode_batch
 from .modeling import SelectBidirLM
+from .postprocess import DEFAULT_BOUNDARY_CHARS, postprocess_char_spans
 
 
 LABEL_TO_TAG = {-100: "IGN", 0: "O", 1: "B", 2: "I"}
@@ -43,6 +44,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-length", type=int, default=8192)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--attention-implementation", default="eager")
+    parser.add_argument(
+        "--postprocess",
+        action="store_true",
+        help=(
+            "add postprocessed_* fields with snapped and trimmed segment "
+            "boundaries (requires source_text, i.e. raw or audit input)"
+        ),
+    )
+    parser.add_argument(
+        "--snap-window",
+        type=int,
+        default=5,
+        help="max characters a boundary may move to reach a sentence boundary",
+    )
+    parser.add_argument("--boundary-chars", default=DEFAULT_BOUNDARY_CHARS)
     return parser
 
 
@@ -357,6 +373,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     gold_labels=gold_labels,
                     metadata=metadata,
                     tokenizer=tokenizer,
+                    postprocess=args.postprocess,
+                    snap_window=args.snap_window,
+                    boundary_chars=args.boundary_chars,
                 )
                 stream.write(json.dumps(output_record, ensure_ascii=False) + "\n")
     if all_labels:
@@ -382,6 +401,9 @@ def build_prediction_output(
     gold_labels: Optional[Sequence[int]],
     metadata: Mapping[str, Any],
     tokenizer: Any,
+    postprocess: bool = False,
+    snap_window: int = 5,
+    boundary_chars: str = DEFAULT_BOUNDARY_CHARS,
 ) -> Dict[str, Any]:
     predicted_spans = labels_to_token_spans(predicted_labels)
     gold_spans = labels_to_token_spans(gold_labels) if gold_labels is not None else []
@@ -431,6 +453,25 @@ def build_prediction_output(
                 ),
             }
         )
+        if postprocess:
+            processed_spans = postprocess_char_spans(
+                source_text,
+                [segment["char_span"] for segment in predicted_text_segments],
+                snap_window=snap_window,
+                boundary_chars=boundary_chars,
+            )
+            processed_texts = [
+                source_text[start:end] for start, end in processed_spans
+            ]
+            output.update(
+                {
+                    "postprocessed_char_spans": [
+                        list(span) for span in processed_spans
+                    ],
+                    "postprocessed_segments": processed_texts,
+                    "postprocessed_refined_text": "".join(processed_texts),
+                }
+            )
         if gold_labels is not None:
             gold_text_segments = token_spans_to_text_segments(
                 source_text, offset_mapping, gold_spans, gold_labels

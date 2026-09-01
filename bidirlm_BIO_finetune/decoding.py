@@ -85,7 +85,12 @@ def _contiguous_runs(indices: Sequence[int]) -> Iterable[List[int]]:
     yield run
 
 
-def compute_bio_metrics(predictions: torch.Tensor, labels: torch.Tensor) -> Dict[str, float]:
+def compute_bio_metrics(
+    predictions: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    boundary_tolerance: int = 2,
+) -> Dict[str, float]:
     """Compute token, retained-content and exact BIO-span metrics."""
 
     if predictions.shape != labels.shape:
@@ -96,12 +101,16 @@ def compute_bio_metrics(predictions: torch.Tensor, labels: torch.Tensor) -> Dict
         mask = gold != IGNORE_INDEX
         predicted_sequences.append(prediction[mask].tolist())
         gold_sequences.append(gold[mask].tolist())
-    return compute_bio_metrics_from_sequences(predicted_sequences, gold_sequences)
+    return compute_bio_metrics_from_sequences(
+        predicted_sequences, gold_sequences, boundary_tolerance=boundary_tolerance
+    )
 
 
 def compute_bio_metrics_from_sequences(
     predicted_sequences: Sequence[Sequence[int]],
     gold_sequences: Sequence[Sequence[int]],
+    *,
+    boundary_tolerance: int = 2,
 ) -> Dict[str, float]:
     if len(predicted_sequences) != len(gold_sequences):
         raise ValueError("prediction and gold sequence counts differ")
@@ -117,11 +126,16 @@ def compute_bio_metrics_from_sequences(
     total = int(confusion.sum())
     token_accuracy = float(confusion.diag().sum()) / total if total else 0.0
     per_label_f1 = []
+    per_label_counts = []
     for label in range(3):
         tp = int(confusion[label, label])
         fp = int(confusion[:, label].sum()) - tp
         fn = int(confusion[label, :].sum()) - tp
+        per_label_counts.append((tp, fp, fn))
         per_label_f1.append(_f1(tp, fp, fn))
+    b_tp, b_fp, b_fn = per_label_counts[1]
+    b_precision = b_tp / (b_tp + b_fp) if b_tp + b_fp else 0.0
+    b_recall = b_tp / (b_tp + b_fn) if b_tp + b_fn else 0.0
 
     content_tp = content_fp = content_fn = 0
     for prediction, gold in zip(predicted_sequences, gold_sequences):
@@ -143,18 +157,60 @@ def compute_bio_metrics_from_sequences(
         for start, end in bio_spans(sequence)
     }
     span_tp = len(predicted_spans & gold_spans)
+
+    tolerant_tp = 0
+    for sample_index in range(len(predicted_sequences)):
+        tolerant_tp += _tolerant_span_matches(
+            bio_spans(predicted_sequences[sample_index]),
+            bio_spans(gold_sequences[sample_index]),
+            boundary_tolerance,
+        )
     return {
         "token_accuracy": token_accuracy,
         "token_macro_f1": sum(per_label_f1) / len(per_label_f1),
+        "token_f1_O": per_label_f1[0],
+        "token_f1_B": per_label_f1[1],
+        "token_f1_I": per_label_f1[2],
+        "b_precision": b_precision,
+        "b_recall": b_recall,
         "content_f1": _f1(content_tp, content_fp, content_fn),
         "span_f1": _f1(
             span_tp,
             len(predicted_spans - gold_spans),
             len(gold_spans - predicted_spans),
         ),
+        "span_f1_tolerant": _f1(
+            tolerant_tp,
+            len(predicted_spans) - tolerant_tp,
+            len(gold_spans) - tolerant_tp,
+        ),
+        "boundary_tolerance": float(boundary_tolerance),
         "tokens": float(total),
         "gold_spans": float(len(gold_spans)),
     }
+
+
+def _tolerant_span_matches(
+    predicted_spans: Sequence[Tuple[int, int]],
+    gold_spans: Sequence[Tuple[int, int]],
+    tolerance: int,
+) -> int:
+    """Greedily one-to-one match spans whose boundaries differ by <= tolerance."""
+
+    matched = 0
+    used = [False] * len(predicted_spans)
+    for gold_start, gold_end in gold_spans:
+        for index, (predicted_start, predicted_end) in enumerate(predicted_spans):
+            if used[index]:
+                continue
+            if (
+                abs(predicted_start - gold_start) <= tolerance
+                and abs(predicted_end - gold_end) <= tolerance
+            ):
+                used[index] = True
+                matched += 1
+                break
+    return matched
 
 
 def pad_and_cat(tensors: Sequence[torch.Tensor], pad_value: int = IGNORE_INDEX) -> torch.Tensor:

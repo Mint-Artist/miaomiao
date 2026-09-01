@@ -73,7 +73,8 @@ class CheckpointTests(unittest.TestCase):
                 scaler=scaler,
                 epoch=1,
                 global_step=20,
-                best_validation_loss=0.8,
+                best_metric_name="span_f1",
+                best_metric_value=0.8,
                 patience=1,
                 resume_epoch=1,
                 resume_batch_index=40,
@@ -89,6 +90,8 @@ class CheckpointTests(unittest.TestCase):
                 weights_only=False,
             )
         self.assertEqual(state["global_step"], 20)
+        self.assertEqual(state["best_metric_name"], "span_f1")
+        self.assertEqual(state["best_metric_value"], 0.8)
         self.assertEqual(state["resume_epoch"], 1)
         self.assertEqual(state["resume_batch_index"], 40)
         self.assertEqual(state["running_batches"], 40)
