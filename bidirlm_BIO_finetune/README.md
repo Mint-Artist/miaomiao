@@ -351,3 +351,48 @@ python -m bidirlm_BIO_finetune.postprocess \
   --input outputs/bidirlm_lora_single/raw_predictions.jsonl \
   --output outputs/bidirlm_lora_single/raw_predictions.post.jsonl
 ```
+
+## 导出合并模型并迁移部署
+
+BidirLM **不是**标准 Qwen3：`config.json` 的 `model_type` 是 `bidirlm`，注意力是双向的，
+`AutoModel` 通过 `auto_map` 指向仓库自带的 `modeling_bidirlm.py`。因此不能当 Qwen 加载，
+也不能交给 vLLM/SGLang 这类自回归推理引擎；它的推理方式和 BERT 类 token 分类器一样，
+只是主干形状恰好是 Qwen3。
+
+把选定的 checkpoint（LoRA 或全参数）合并导出为 safetensors：
+
+```bash
+python -m bidirlm_BIO_finetune.export_merged \
+  --checkpoint outputs/xxx/checkpoint-step-00001800 \
+  --output exports/select_v1 \
+  --dtype float16
+```
+
+导出目录：
+
+```text
+exports/select_v1/
+  backbone/              合并后的权重 model.safetensors + config.json
+                         + configuration_bidirlm.py + modeling_bidirlm.py
+  tokenizer/
+  select_heads.safetensors   分类头 + 转移头（float32）
+  select_heads.pt            同上，供 predict.py 直接加载
+  select_config.json
+```
+
+导出目录可以直接被 `predict.py --checkpoint exports/select_v1` 使用；迁移到其他平台时把
+整个目录拷走，确认 `backbone/` 里两个 `.py` 文件在场（脚本会打印 `custom_code_missing`）。
+
+平台侧推理只依赖 torch、transformers、safetensors，用 `standalone_inference.py`（可单独拷走）：
+
+```bash
+python -m bidirlm_BIO_finetune.standalone_inference \
+  --model-dir exports/select_v1 \
+  --input raw.jsonl --output refined.jsonl \
+  --text-field source_text --window 8192 --stride 6144 --postprocess
+```
+
+与自回归大模型的区别：一次双向前向得到每个 token 的 O/B/I 分数和 3×3 转移分数，
+Viterbi 解码后把 B/I token 映射回原文字符区间，没有 `generate`、KV cache 和采样；
+输出永远是原文的逐字子序列。超过 `--window` 的长文按重叠窗口处理：每个位置取离
+窗口边缘最远的那次前向的分数，拼接后只跑一次 Viterbi，避免"从中间开始"的伪边界。
