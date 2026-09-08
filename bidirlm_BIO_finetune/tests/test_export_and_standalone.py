@@ -180,8 +180,10 @@ class FakeBackbone(nn.Module):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.config = type("cfg", (), {"vocab_size": vocab_size, "hidden_size": hidden_size})()
+        self.seen_mask = None
 
     def forward(self, input_ids=None, attention_mask=None, return_dict=True):
+        self.seen_mask = attention_mask
         return type("out", (), {"last_hidden_state": self.embedding(input_ids)})()
 
 
@@ -191,6 +193,36 @@ class OnnxWrapperTests(unittest.TestCase):
 
         torch.manual_seed(0)
         return SelectOnnxModule(FakeBackbone(), nn.Linear(4, 3), nn.Linear(4, 9))
+
+    def test_four_d_mask_is_additive_and_key_only(self):
+        module = self._module()
+        ids = torch.randint(0, 50, (2, 6))
+        mask = torch.ones((2, 6), dtype=torch.long)
+        mask[1, 4:] = 0
+        module(ids, mask)
+        seen = module.backbone.seen_mask
+        self.assertEqual(tuple(seen.shape), (2, 1, 1, 6))
+        minimum = torch.finfo(torch.float32).min
+        self.assertEqual(float(seen[0, 0, 0, 0]), 0.0)
+        self.assertEqual(float(seen[1, 0, 0, 3]), 0.0)
+        self.assertEqual(float(seen[1, 0, 0, 5]), minimum)
+
+    def test_two_d_mask_mode_passes_mask_through(self):
+        from bidirlm_BIO_finetune.export_onnx import SelectOnnxModule
+
+        module = SelectOnnxModule(
+            FakeBackbone(), nn.Linear(4, 3), nn.Linear(4, 9), mask_mode="2d"
+        )
+        ids = torch.randint(0, 50, (1, 5))
+        mask = torch.ones((1, 5), dtype=torch.long)
+        module(ids, mask)
+        self.assertTrue(torch.equal(module.backbone.seen_mask, mask))
+
+    def test_mask_mode_is_validated(self):
+        from bidirlm_BIO_finetune.export_onnx import SelectOnnxModule
+
+        with self.assertRaises(ValueError):
+            SelectOnnxModule(FakeBackbone(), nn.Linear(4, 3), nn.Linear(4, 9), mask_mode="3d")
 
     def test_output_shapes_follow_input_length(self):
         module = self._module()

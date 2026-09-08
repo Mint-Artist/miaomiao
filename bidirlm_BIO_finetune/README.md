@@ -414,6 +414,20 @@ python -m bidirlm_BIO_finetune.export_onnx \
 精度：默认 `float32`，交给昇腾 ATC 自行选择 precision mode；直接用 ONNX Runtime
 且想要更小的文件时可用 `--dtype float16`。
 
+### 长度被固化时怎么办
+
+传 2D attention_mask 时，transformers 会走自己的 mask 构造逻辑，其中
+`.expand(batch_size, -1, q_length, kv_length)` 用的是 Python 整数，导出长度会被
+静默写进图里，换长度推理时报
+`Reshape ... Input shape:{128}, requested shape:{256,1}`。
+
+`--mask-mode 4d`（默认）在 wrapper 内部把 2D padding mask 转成 4D 加性 mask，
+`_preprocess_mask_arguments` 见到 4D 会原样返回、跳过整段构造逻辑，问题消失。
+转换只用广播、不读取任何形状。**图的输入仍然是 2D**，平台侧照常传 `[B, L]`
+的 0/1 mask。
+
+仍然失败时再试 `--exporter dynamo`，它走 torch.export 的符号形状而不是 tracing。
+
 **导出后必须看校验结果。** 声明了 dynamic_axes 不等于长度真的是动态的：模型代码里
 若有用 Python 整数切片缓存之类的写法，tracing 会把导出长度静默固化。脚本因此会用
 `--verify-lengths`（默认 128,384,777）重跑并与 PyTorch 比对 logits 和解码标签，

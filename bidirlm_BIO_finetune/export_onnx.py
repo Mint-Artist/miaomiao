@@ -32,19 +32,50 @@ OUTPUT_NAMES = ("classification_logits", "transition_logits")
 
 
 class SelectOnnxModule(nn.Module):
-    """Backbone plus both heads, with ONNX-traceable shape handling."""
+    """Backbone plus both heads, with ONNX-traceable shape handling.
 
-    def __init__(self, backbone: nn.Module, classification_head: nn.Module, transition_head: nn.Module):
+    ``mask_mode="4d"`` converts the 2D padding mask into a 4D additive mask
+    inside this wrapper.  transformers' ``_preprocess_mask_arguments`` returns
+    a 4D mask as-is, which skips its mask-construction path -- that path
+    expands index tensors using Python ints (``expand(batch_size, -1,
+    q_length, kv_length)``) and bakes the export length into the graph.  The
+    conversion here is pure broadcasting, so no shape is ever read.
+
+    The graph input stays 2D either way: callers pass ``[B, L]`` with 1 for
+    real tokens and 0 for padding.
+    """
+
+    def __init__(
+        self,
+        backbone: nn.Module,
+        classification_head: nn.Module,
+        transition_head: nn.Module,
+        *,
+        mask_mode: str = "4d",
+    ):
         super().__init__()
+        if mask_mode not in {"2d", "4d"}:
+            raise ValueError("mask_mode must be 2d or 4d")
         self.backbone = backbone
         self.classification_head = classification_head
         self.transition_head = transition_head
+        self.mask_mode = mask_mode
+
+    def _expand_mask(self, attention_mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        # [B, L] -> [B, 1, 1, L] additive mask: 0 keeps a key, min blocks it.
+        # Only keys are masked; masking query rows too would make a padded
+        # row all -inf and turn its softmax into NaN.
+        keep = attention_mask[:, None, None, :].to(dtype)
+        return (1.0 - keep) * torch.finfo(dtype).min
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask = attention_mask
+        if self.mask_mode == "4d":
+            mask = self._expand_mask(attention_mask, self.classification_head.weight.dtype)
         hidden_states = self.backbone(
-            input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+            input_ids=input_ids, attention_mask=mask, return_dict=True
         ).last_hidden_state
         classification_logits = self.classification_head(hidden_states)
         transition_logits = self.transition_head(hidden_states)
@@ -72,6 +103,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument(
+        "--mask-mode",
+        choices=("4d", "2d"),
+        default="4d",
+        help=(
+            "4d converts the padding mask inside the wrapper so transformers "
+            "skips its mask builder, whose Python-int expand bakes in the "
+            "export length; 2d passes the mask through unchanged"
+        ),
+    )
+    parser.add_argument(
+        "--exporter",
+        choices=("tracing", "dynamo"),
+        default="tracing",
+        help="dynamo uses torch.export symbolic shapes; try it if tracing bakes shapes",
+    )
     parser.add_argument("--export-length", type=int, default=256)
     parser.add_argument(
         "--verify-lengths",
@@ -90,6 +137,7 @@ def load_export_module(
     base_model_name_or_path: Optional[str],
     attention_implementation: str,
     dtype: torch.dtype,
+    mask_mode: str = "4d",
 ) -> Tuple[SelectOnnxModule, Dict[str, Any]]:
     model = SelectBidirLM.from_checkpoint(
         checkpoint,
@@ -102,7 +150,9 @@ def load_export_module(
     source_mode = model.finetuning_mode
     if source_mode == "lora":
         backbone = backbone.merge_and_unload()
-    module = SelectOnnxModule(backbone, model.classification_head, model.transition_head)
+    module = SelectOnnxModule(
+        backbone, model.classification_head, model.transition_head, mask_mode=mask_mode
+    )
     module = module.to(dtype).eval()
     info = {
         "source_mode": source_mode,
@@ -113,7 +163,15 @@ def load_export_module(
     return module, info
 
 
-def export(module: SelectOnnxModule, output: Path, *, length: int, vocab_size: int, opset: int) -> None:
+def export(
+    module: SelectOnnxModule,
+    output: Path,
+    *,
+    length: int,
+    vocab_size: int,
+    opset: int,
+    exporter: str = "tracing",
+) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     input_ids = torch.randint(0, vocab_size, (1, length), dtype=torch.long)
     attention_mask = torch.ones_like(input_ids)
@@ -124,6 +182,25 @@ def export(module: SelectOnnxModule, output: Path, *, length: int, vocab_size: i
         "transition_logits": {0: "batch", 1: "sequence"},
     }
     with torch.no_grad():
+        if exporter == "dynamo":
+            from torch.export import Dim
+
+            batch = Dim("batch", min=1, max=64)
+            sequence = Dim("sequence", min=2, max=65536)
+            torch.onnx.export(
+                module,
+                (input_ids, attention_mask),
+                str(output),
+                input_names=list(INPUT_NAMES),
+                output_names=list(OUTPUT_NAMES),
+                dynamic_shapes={
+                    "input_ids": {0: batch, 1: sequence},
+                    "attention_mask": {0: batch, 1: sequence},
+                },
+                opset_version=opset,
+                dynamo=True,
+            )
+            return
         torch.onnx.export(
             module,
             (input_ids, attention_mask),
@@ -251,6 +328,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         base_model_name_or_path=args.base_model_name_or_path,
         attention_implementation=args.attention_implementation,
         dtype=dtype,
+        mask_mode=args.mask_mode,
     )
     export(
         module,
@@ -258,6 +336,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         length=args.export_length,
         vocab_size=info["vocab_size"],
         opset=args.opset,
+        exporter=args.exporter,
     )
 
     summary: Dict[str, Any] = {
@@ -268,6 +347,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "inputs": list(INPUT_NAMES),
         "outputs": list(OUTPUT_NAMES),
         "dynamic_axes": ["batch", "sequence"],
+        "mask_mode": args.mask_mode,
+        "exporter": args.exporter,
         **info,
     }
     if args.skip_verify:
@@ -292,7 +373,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(
             "VERIFICATION FAILED: the graph does not reproduce PyTorch at other "
             "lengths. The export length is likely baked into the graph; do not "
-            "deploy it.",
+            "deploy it. Try --mask-mode 4d (default) and then --exporter dynamo.",
         )
         return 1
     return 0
