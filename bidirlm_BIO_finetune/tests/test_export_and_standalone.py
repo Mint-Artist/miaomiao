@@ -165,6 +165,14 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(metadata["label2id"], {"O": 0, "B": 1, "I": 2})
 
 
+def pytest_importorskip_onnx():
+    try:
+        import onnx
+    except ImportError:  # pragma: no cover - environment dependent
+        raise unittest.SkipTest("onnx not installed")
+    return onnx
+
+
 def _numpy_bridge_works() -> bool:
     try:
         torch.zeros(1).numpy()
@@ -276,6 +284,54 @@ class OnnxWrapperTests(unittest.TestCase):
             listed,
             {"model.onnx", "onnx__MatMul_8481", "backbone.embed_tokens.weight"},
         )
+
+    def test_consolidate_merges_scattered_external_data(self):
+        onnx = pytest_importorskip_onnx()
+        import numpy as np
+        from onnx import TensorProto, helper, numpy_helper
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "model.onnx"
+            weights = {
+                # Above save_model's 1024-byte threshold, so they land in the
+                # .data file rather than being inlined into the model.
+                "backbone.embed_tokens.weight": np.arange(2048, dtype=np.float32).reshape(64, 32),
+                "onnx__MatMul_8481": np.full((32, 32), 7.0, dtype=np.float32),
+            }
+            initializers = []
+            for name, array in weights.items():
+                # Mimic torch: one file per tensor, named after the tensor.
+                (Path(directory) / name).write_bytes(array.tobytes())
+                tensor = numpy_helper.from_array(array, name)
+                tensor.ClearField("raw_data")
+                tensor.data_location = TensorProto.EXTERNAL
+                entry = tensor.external_data.add()
+                entry.key, entry.value = "location", name
+                initializers.append(tensor)
+            graph = helper.make_graph(
+                [helper.make_node("Identity", ["x"], ["y"])],
+                "g",
+                [helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])],
+                [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])],
+                initializer=initializers,
+            )
+            onnx.save(helper.make_model(graph), str(output))
+
+            from bidirlm_BIO_finetune.export_onnx import consolidate_external_data
+
+            result = consolidate_external_data(output)
+            remaining = sorted(path.name for path in Path(directory).iterdir())
+            reloaded = onnx.load(str(output))
+            restored = {
+                item.name: numpy_helper.to_array(item)
+                for item in reloaded.graph.initializer
+            }
+
+        self.assertTrue(result["consolidated"])
+        self.assertEqual(result["inlined_tensors"], 2)
+        self.assertEqual(remaining, ["model.onnx", "model.onnx.data"])
+        for name, array in weights.items():
+            self.assertTrue(np.array_equal(restored[name], array))
 
     def test_consolidate_is_a_noop_without_external_data(self):
         from bidirlm_BIO_finetune.export_onnx import consolidate_external_data

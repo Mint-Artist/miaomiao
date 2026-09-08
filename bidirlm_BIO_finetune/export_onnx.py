@@ -236,6 +236,40 @@ def exported_files(output: Path) -> List[Dict[str, Any]]:
     ]
 
 
+def inline_external_tensors(model: Any, base_dir: Path) -> int:
+    """Read external tensor data with plain file I/O and inline it.
+
+    ``onnx.load`` routes external data through the C++ checker, which rejects
+    some locations outright ("kernel rejected path"). The files are ours and
+    sit next to the model, so read them directly instead; this also tolerates
+    an absolute or directory-qualified location by falling back to the
+    basename inside the model directory.
+    """
+
+    import onnx
+    from onnx.external_data_helper import ExternalDataInfo, _get_all_tensors
+
+    inlined = 0
+    for tensor in _get_all_tensors(model):
+        if tensor.data_location != onnx.TensorProto.EXTERNAL:
+            continue
+        info = ExternalDataInfo(tensor)
+        candidate = Path(info.location)
+        path = candidate if candidate.is_absolute() else base_dir / candidate
+        if not path.is_file():
+            path = base_dir / candidate.name
+        offset = int(getattr(info, "offset", 0) or 0)
+        length = int(getattr(info, "length", 0) or 0)
+        with open(path, "rb") as stream:
+            if offset:
+                stream.seek(offset)
+            tensor.raw_data = stream.read(length) if length else stream.read()
+        tensor.data_location = onnx.TensorProto.DEFAULT
+        del tensor.external_data[:]
+        inlined += 1
+    return inlined
+
+
 def consolidate_external_data(output: Path) -> Dict[str, Any]:
     """Rewrite per-tensor external-data files into a single ``.data`` sibling.
 
@@ -255,7 +289,8 @@ def consolidate_external_data(output: Path) -> Dict[str, Any]:
     if not stale:
         return {"consolidated": False, "reason": "weights already fit in the model file"}
 
-    model = onnx.load(str(output))  # pulls the external tensors into memory
+    model = onnx.load(str(output), load_external_data=False)
+    inlined = inline_external_tensors(model, output.parent)
     onnx.save_model(
         model,
         str(output),
@@ -270,6 +305,7 @@ def consolidate_external_data(output: Path) -> Dict[str, Any]:
     return {
         "consolidated": True,
         "location": location,
+        "inlined_tensors": inlined,
         "removed_files": len(stale),
     }
 
@@ -391,10 +427,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     consolidation: Dict[str, Any] = {"consolidated": False, "reason": "disabled"}
     if not args.no_consolidate:
+        # Merging external data is a convenience; a failure here must not lose
+        # the export or skip verification.
         try:
             consolidation = consolidate_external_data(output)
-        except ImportError:
-            consolidation = {"consolidated": False, "reason": "onnx not installed"}
+        except Exception as exc:  # noqa: BLE001
+            consolidation = {
+                "consolidated": False,
+                "reason": f"{type(exc).__name__}: {exc}",
+                "hint": (
+                    "the export itself is fine; copy every file in the output "
+                    "directory, or re-export with --dtype float16 to stay under "
+                    "the 2GB limit and get a single file"
+                ),
+            }
 
     summary: Dict[str, Any] = {
         "output": str(output),
