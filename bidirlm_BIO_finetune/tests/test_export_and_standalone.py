@@ -165,5 +165,82 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(metadata["label2id"], {"O": 0, "B": 1, "I": 2})
 
 
+def _numpy_bridge_works() -> bool:
+    try:
+        torch.zeros(1).numpy()
+    except Exception:
+        return False
+    return True
+
+
+class FakeBackbone(nn.Module):
+    """Length-agnostic stand-in: hidden state depends only on the token id."""
+
+    def __init__(self, hidden_size=4, vocab_size=50):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.config = type("cfg", (), {"vocab_size": vocab_size, "hidden_size": hidden_size})()
+
+    def forward(self, input_ids=None, attention_mask=None, return_dict=True):
+        return type("out", (), {"last_hidden_state": self.embedding(input_ids)})()
+
+
+class OnnxWrapperTests(unittest.TestCase):
+    def _module(self):
+        from bidirlm_BIO_finetune.export_onnx import SelectOnnxModule
+
+        torch.manual_seed(0)
+        return SelectOnnxModule(FakeBackbone(), nn.Linear(4, 3), nn.Linear(4, 9))
+
+    def test_output_shapes_follow_input_length(self):
+        module = self._module()
+        for length in (1, 7, 64):
+            ids = torch.randint(0, 50, (1, length))
+            classification, transition = module(ids, torch.ones_like(ids))
+            self.assertEqual(tuple(classification.shape), (1, length, 3))
+            self.assertEqual(tuple(transition.shape), (1, length, 3, 3))
+
+    def test_transition_reshape_matches_head_layout(self):
+        module = self._module()
+        ids = torch.randint(0, 50, (2, 5))
+        _, transition = module(ids, torch.ones_like(ids))
+        hidden = module.backbone(input_ids=ids).last_hidden_state
+        expected = module.transition_head(hidden).reshape(2, 5, 3, 3)
+        self.assertTrue(torch.equal(transition, expected))
+
+    @unittest.skipUnless(_numpy_bridge_works(), "torch<->numpy bridge unavailable")
+    def test_onnx_forward_fn_matches_torch_forward_fn(self):
+        module = self._module()
+
+        class FakeSession:
+            def run(self, names, feeds):
+                ids = torch.from_numpy(feeds["input_ids"])
+                mask = torch.from_numpy(feeds["attention_mask"])
+                with torch.no_grad():
+                    classification, transition = module(ids, mask)
+                return [classification.numpy(), transition.numpy()]
+
+        from bidirlm_BIO_finetune.standalone_inference import make_onnx_forward_fn
+
+        forward = make_onnx_forward_fn(FakeSession())
+        ids = torch.randint(0, 50, (1, 9))
+        classification, transition = forward(ids)
+        with torch.no_grad():
+            expected_cls, expected_tr = module(ids, torch.ones_like(ids))
+        self.assertTrue(torch.allclose(classification, expected_cls[0]))
+        self.assertTrue(torch.allclose(transition, expected_tr[0]))
+
+    def test_exported_files_lists_external_data_siblings(self):
+        from bidirlm_BIO_finetune.export_onnx import exported_files
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "model.onnx"
+            output.write_bytes(b"graph")
+            (Path(directory) / "model.onnx.data").write_bytes(b"weights!!")
+            (Path(directory) / "unrelated.json").write_text("{}", encoding="utf-8")
+            listed = {item["file"] for item in exported_files(output)}
+        self.assertEqual(listed, {"model.onnx", "model.onnx.data"})
+
+
 if __name__ == "__main__":
     unittest.main()

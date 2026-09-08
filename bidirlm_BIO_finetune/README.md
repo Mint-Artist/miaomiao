@@ -396,3 +396,43 @@ python -m bidirlm_BIO_finetune.standalone_inference \
 Viterbi 解码后把 B/I token 映射回原文字符区间，没有 `generate`、KV cache 和采样；
 输出永远是原文的逐字子序列。超过 `--window` 的长文按重叠窗口处理：每个位置取离
 窗口边缘最远的那次前向的分数，拼接后只跑一次 Viterbi，避免"从中间开始"的伪边界。
+
+## 导出 ONNX
+
+```bash
+pip install onnx onnxruntime      # 导出与校验所需，未写入 requirements.txt
+python -m bidirlm_BIO_finetune.export_onnx \
+  --checkpoint exports/select_v1 \
+  --output exports/select_v1_onnx/model.onnx \
+  --dtype float32
+```
+
+图的输入为 `input_ids`、`attention_mask`，输出为 `classification_logits[B, L, 3]`
+与 `transition_logits[B, L, 3, 3]`，batch 与 sequence 两个轴都是动态的。
+主干和两个 head 都在图内；log_softmax、Viterbi、字符映射仍在图外用 float32 完成。
+
+精度：默认 `float32`，交给昇腾 ATC 自行选择 precision mode；直接用 ONNX Runtime
+且想要更小的文件时可用 `--dtype float16`。
+
+**导出后必须看校验结果。** 声明了 dynamic_axes 不等于长度真的是动态的：模型代码里
+若有用 Python 整数切片缓存之类的写法，tracing 会把导出长度静默固化。脚本因此会用
+`--verify-lengths`（默认 128,384,777）重跑并与 PyTorch 比对 logits 和解码标签，
+同时验证右侧 padding 不影响真实位置的输出（分档 padding 部署依赖这条性质）。
+`verification.passed` 为 false 时进程返回 1，此时不要部署该图。
+
+用 ONNX Runtime 跑推理（分词、滑窗、Viterbi 与 PyTorch 后端完全一致）：
+
+```bash
+python -m bidirlm_BIO_finetune.standalone_inference \
+  --model-dir exports/select_v1 \
+  --backend onnx --onnx-model exports/select_v1_onnx/model.onnx \
+  --input raw.jsonl --output refined.jsonl --postprocess
+```
+
+### 导出产物不是一个自足的文件
+
+- `float16`（约 1.2GB）可以是单个 `model.onnx`；`float32`（约 2.4GB）超过 protobuf
+  的 2GB 上限，PyTorch 会自动改用 external data，产出 `model.onnx` 加一个权重文件，
+  两者必须一起拷贝。脚本输出的 `files` 字段会列出实际生成的全部文件。
+- 图内只有主干和两个 head。分词器（`tokenizer/`）、Viterbi 解码、token 到字符的
+  映射、边界后处理都在图外，部署时仍需一并带上。

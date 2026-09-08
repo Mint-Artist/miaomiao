@@ -105,6 +105,39 @@ def make_forward_fn(backbone: nn.Module, heads: SelectHeads, device: str) -> For
     return forward
 
 
+def make_onnx_forward_fn(session: Any, pad_token_id: int = 0) -> ForwardFn:
+    """Wrap an onnxruntime session (or any .run-compatible object) as a ForwardFn.
+
+    ``bucket_sizes`` is deliberately absent: pad to a bucket in the caller if
+    the backend needs fixed shapes, and pad on the right with attention_mask 0
+    so the real positions keep their logits.
+    """
+
+    import numpy as np
+
+    def forward(input_ids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        ids = input_ids.numpy().astype(np.int64)
+        mask = np.ones_like(ids)
+        classification, transition = session.run(
+            ["classification_logits", "transition_logits"],
+            {"input_ids": ids, "attention_mask": mask},
+        )
+        return (
+            torch.from_numpy(np.asarray(classification)[0]).float(),
+            torch.from_numpy(np.asarray(transition)[0]).float(),
+        )
+
+    return forward
+
+
+def load_onnx_session(model_path: str | Path, *, providers: Optional[Sequence[str]] = None):
+    import onnxruntime as ort
+
+    return ort.InferenceSession(
+        str(model_path), providers=list(providers or ["CPUExecutionProvider"])
+    )
+
+
 def window_plan(length: int, window: int, stride: int) -> List[Tuple[int, int, int, int]]:
     """Return (start, end, keep_start, keep_end) windows covering [0, length)."""
 
@@ -256,6 +289,20 @@ def build_parser() -> argparse.ArgumentParser:
         description="Refine raw text JSONL with an exported SELECT BidirLM"
     )
     parser.add_argument("--model-dir", required=True)
+    parser.add_argument(
+        "--backend",
+        choices=("torch", "onnx"),
+        default="torch",
+        help="torch loads backbone+heads; onnx runs an export_onnx.py graph",
+    )
+    parser.add_argument(
+        "--onnx-model",
+        help="path to the .onnx file (default: <model-dir>/model.onnx)",
+    )
+    parser.add_argument(
+        "--onnx-providers",
+        help="comma-separated onnxruntime providers (default: CPUExecutionProvider)",
+    )
     parser.add_argument("--input", required=True, help="JSONL with a text field")
     parser.add_argument("--output", required=True)
     parser.add_argument("--text-field", default="source_text")
@@ -275,13 +322,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    backbone, heads, tokenizer = load_select_model(
-        args.model_dir,
-        device=args.device,
-        dtype=args.dtype,
-        attention_implementation=args.attention_implementation,
-    )
-    forward_fn = make_forward_fn(backbone, heads, args.device)
+    from transformers import AutoTokenizer
+
+    if args.backend == "onnx":
+        onnx_model = args.onnx_model or (Path(args.model_dir) / "model.onnx")
+        providers = (
+            [item.strip() for item in args.onnx_providers.split(",") if item.strip()]
+            if args.onnx_providers
+            else None
+        )
+        forward_fn = make_onnx_forward_fn(load_onnx_session(onnx_model, providers=providers))
+        tokenizer = AutoTokenizer.from_pretrained(
+            Path(args.model_dir) / "tokenizer", trust_remote_code=True
+        )
+    else:
+        backbone, heads, tokenizer = load_select_model(
+            args.model_dir,
+            device=args.device,
+            dtype=args.dtype,
+            attention_implementation=args.attention_implementation,
+        )
+        forward_fn = make_forward_fn(backbone, heads, args.device)
 
     postprocess_fn = None
     if args.postprocess:
