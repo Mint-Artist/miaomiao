@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -236,7 +237,7 @@ def exported_files(output: Path) -> List[Dict[str, Any]]:
     ]
 
 
-def inline_external_tensors(model: Any, base_dir: Path) -> int:
+def inline_external_tensors(model: Any, base_dir: Path) -> List[Path]:
     """Read external tensor data with plain file I/O and inline it.
 
     ``onnx.load`` routes external data through the C++ checker, which rejects
@@ -249,7 +250,7 @@ def inline_external_tensors(model: Any, base_dir: Path) -> int:
     import onnx
     from onnx.external_data_helper import ExternalDataInfo, _get_all_tensors
 
-    inlined = 0
+    consumed: List[Path] = []
     for tensor in _get_all_tensors(model):
         if tensor.data_location != onnx.TensorProto.EXTERNAL:
             continue
@@ -266,8 +267,8 @@ def inline_external_tensors(model: Any, base_dir: Path) -> int:
             tensor.raw_data = stream.read(length) if length else stream.read()
         tensor.data_location = onnx.TensorProto.DEFAULT
         del tensor.external_data[:]
-        inlined += 1
-    return inlined
+        consumed.append(path)
+    return consumed
 
 
 def consolidate_external_data(output: Path) -> Dict[str, Any]:
@@ -281,16 +282,11 @@ def consolidate_external_data(output: Path) -> Dict[str, Any]:
     import onnx
 
     location = output.name + ".data"
-    stale = [
-        path
-        for path in output.parent.iterdir()
-        if path.is_file() and path.name not in {output.name, location}
-    ]
-    if not stale:
+    model = onnx.load(str(output), load_external_data=False)
+    consumed = inline_external_tensors(model, output.parent)
+    if not consumed:
         return {"consolidated": False, "reason": "weights already fit in the model file"}
 
-    model = onnx.load(str(output), load_external_data=False)
-    inlined = inline_external_tensors(model, output.parent)
     onnx.save_model(
         model,
         str(output),
@@ -300,14 +296,50 @@ def consolidate_external_data(output: Path) -> Dict[str, Any]:
         size_threshold=1024,
         convert_attribute=False,
     )
-    for path in stale:
-        path.unlink()
+    # Delete only the files we actually read; anything else in the directory
+    # (tokenizer, notes) belongs to the deployment bundle.
+    removed = 0
+    keep = {output.resolve(), (output.parent / location).resolve()}
+    for path in dict.fromkeys(consumed):
+        if path.resolve() not in keep and path.is_file():
+            path.unlink()
+            removed += 1
     return {
         "consolidated": True,
         "location": location,
-        "inlined_tensors": inlined,
-        "removed_files": len(stale),
+        "inlined_tensors": len(consumed),
+        "removed_files": removed,
     }
+
+
+TOKENIZER_FILES = (
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "vocab.json",
+    "merges.txt",
+    "added_tokens.json",
+)
+
+
+def copy_tokenizer(checkpoint: Path, output_dir: Path) -> List[str]:
+    """Put the tokenizer next to the graph so the directory is deployable.
+
+    The graph consumes token ids, so a bundle without the tokenizer cannot
+    process text at all.
+    """
+
+    source = checkpoint / "tokenizer"
+    if not source.is_dir():
+        source = checkpoint
+    copied = []
+    for name in TOKENIZER_FILES:
+        candidate = source / name
+        target = output_dir / name
+        if candidate.is_file() and not target.exists():
+            shutil.copyfile(candidate, target)
+            copied.append(name)
+    return copied
 
 
 def verify(
@@ -442,9 +474,37 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 ),
             }
 
+    tokenizer_files = copy_tokenizer(Path(args.checkpoint), output.parent)
+    (output.parent / "export_info.json").write_text(
+        json.dumps(
+            {
+                "format": "select-bidirlm-onnx-v1",
+                "inputs": {
+                    "input_ids": "int64 [batch, sequence]",
+                    "attention_mask": "int64 [batch, sequence], 1 real / 0 padding",
+                },
+                "outputs": {
+                    "classification_logits": "float [batch, sequence, 3]",
+                    "transition_logits": "float [batch, sequence, 3, 3]",
+                },
+                "label2id": {"O": 0, "B": 1, "I": 2},
+                "dtype": args.dtype,
+                "opset": args.opset,
+                "recommended_window": 8192,
+                "recommended_stride": 6144,
+                "decoding": "log_softmax + Viterbi outside the graph; see onnx_inference.py",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     summary: Dict[str, Any] = {
         "output": str(output),
         "external_data": consolidation,
+        "tokenizer_files": tokenizer_files,
         "files": exported_files(output),
         "dtype": args.dtype,
         "opset": args.opset,

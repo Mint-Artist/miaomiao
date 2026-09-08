@@ -443,6 +443,22 @@ python -m bidirlm_BIO_finetune.standalone_inference \
   --input raw.jsonl --output refined.jsonl --postprocess
 ```
 
+### 导出目录就是部署包
+
+导出结束后，输出目录会包含：
+
+```text
+exports/select_v1_onnx/
+├── model.onnx           图结构
+├── model.onnx.data      权重（仅 fp32 超过 2GB 时出现）
+├── tokenizer.json       分词器（从 checkpoint 的 tokenizer/ 拷贝）
+├── tokenizer_config.json / merges.txt / vocab.json …（若存在）
+└── export_info.json     输入输出契约、label2id、推荐 window/stride
+```
+
+整个目录拷到平台即可。图的输入是 token id，**没有分词器就无法处理文本**，所以
+分词器是部署包的必需品，不是可选项。
+
 ### 导出产物不是一个自足的文件
 
 - `float16`（约 1.2GB）可以是单个 `model.onnx`；`float32`（约 2.4GB）超过 protobuf

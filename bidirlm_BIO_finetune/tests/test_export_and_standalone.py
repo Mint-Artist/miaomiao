@@ -319,6 +319,8 @@ class OnnxWrapperTests(unittest.TestCase):
 
             from bidirlm_BIO_finetune.export_onnx import consolidate_external_data
 
+            # An unrelated bundle file must survive consolidation.
+            (Path(directory) / "tokenizer.json").write_text("{}", encoding="utf-8")
             result = consolidate_external_data(output)
             remaining = sorted(path.name for path in Path(directory).iterdir())
             reloaded = onnx.load(str(output))
@@ -329,18 +331,47 @@ class OnnxWrapperTests(unittest.TestCase):
 
         self.assertTrue(result["consolidated"])
         self.assertEqual(result["inlined_tensors"], 2)
-        self.assertEqual(remaining, ["model.onnx", "model.onnx.data"])
+        self.assertEqual(
+            remaining, ["model.onnx", "model.onnx.data", "tokenizer.json"]
+        )
         for name, array in weights.items():
             self.assertTrue(np.array_equal(restored[name], array))
 
+    def test_copy_tokenizer_bundles_files_next_to_the_graph(self):
+        from bidirlm_BIO_finetune.export_onnx import copy_tokenizer
+
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "ckpt"
+            (checkpoint / "tokenizer").mkdir(parents=True)
+            (checkpoint / "tokenizer" / "tokenizer.json").write_text("{}", encoding="utf-8")
+            (checkpoint / "tokenizer" / "merges.txt").write_text("a b", encoding="utf-8")
+            (checkpoint / "tokenizer" / "unrelated.bin").write_bytes(b"x")
+            out = Path(directory) / "onnx"
+            out.mkdir()
+            copied = copy_tokenizer(checkpoint, out)
+            second = copy_tokenizer(checkpoint, out)
+        self.assertEqual(sorted(copied), ["merges.txt", "tokenizer.json"])
+        self.assertEqual(second, [])  # already present, not re-copied
+
     def test_consolidate_is_a_noop_without_external_data(self):
+        onnx = pytest_importorskip_onnx()
+        from onnx import TensorProto, helper
+
         from bidirlm_BIO_finetune.export_onnx import consolidate_external_data
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "model.onnx"
-            output.write_bytes(b"graph")
+            graph = helper.make_graph(
+                [helper.make_node("Identity", ["x"], ["y"])],
+                "g",
+                [helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])],
+                [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])],
+            )
+            onnx.save(helper.make_model(graph), str(output))
             result = consolidate_external_data(output)
+            remaining = sorted(path.name for path in Path(directory).iterdir())
         self.assertFalse(result["consolidated"])
+        self.assertEqual(remaining, ["model.onnx"])
 
 
 if __name__ == "__main__":
