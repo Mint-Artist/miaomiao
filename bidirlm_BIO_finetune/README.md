@@ -453,8 +453,23 @@ exports/select_v1_onnx/
 ├── model.onnx.data      权重（仅 fp32 超过 2GB 时出现）
 ├── tokenizer.json       分词器（从 checkpoint 的 tokenizer/ 拷贝）
 ├── tokenizer_config.json / merges.txt / vocab.json …（若存在）
-└── export_info.json     输入输出契约、label2id、推荐 window/stride
+└── export_info.json     部署契约（见下）
 ```
+
+`backbone/config.json` 是 transformers 读的编码器结构配置（`model_type: bidirlm`、
+`auto_map` 等），由 `save_pretrained` 生成，**不要手改**，改了模型就加载不了。
+任务层面的信息放在 `export_info.json`，它记录半年后别人只拿到这个目录也能正确
+使用所需的全部信息：
+
+- `source`：来自哪个 checkpoint、底座是什么、原本是 LoRA 还是全参数、导出时间
+- `task`：label2id 与 O/B/I 含义、输出是 B/I 段的拼接且必为原文逐字子序列、
+  空输出表示整页丢弃
+- `graph`：输入输出张量名/dtype/shape、动态轴、opset
+- `tokenizer`：随包的分词器文件，以及必须使用的调用参数
+  （`add_special_tokens=True`、`truncation=False`、`return_offsets_mapping=True`）
+  —— 参数不对会静默错位每一个字符区间
+- `inference`：window/stride、滑窗规则、分档 padding 规则、pad_token_id
+- `postprocessing`：log_softmax + Viterbi（图外 fp32）、边界规则、300 字符过滤约定
 
 整个目录拷到平台即可。图的输入是 token id，**没有分词器就无法处理文本**，所以
 分词器是部署包的必需品，不是可选项。

@@ -353,6 +353,63 @@ class OnnxWrapperTests(unittest.TestCase):
         self.assertEqual(sorted(copied), ["merges.txt", "tokenizer.json"])
         self.assertEqual(second, [])  # already present, not re-copied
 
+    def test_export_info_carries_the_deployment_contract(self):
+        from bidirlm_BIO_finetune.export_onnx import build_export_info
+
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "ckpt"
+            checkpoint.mkdir()
+            (checkpoint / "select_config.json").write_text(
+                json.dumps(
+                    {
+                        "base_model_name_or_path": "/models/BidirLM-0.6B-Base",
+                        "finetuning_mode": "full",
+                        "exported_from_mode": "lora",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            info = build_export_info(
+                checkpoint,
+                dtype="float32",
+                opset=17,
+                mask_mode="4d",
+                info={"hidden_size": 1024, "vocab_size": 151936},
+                tokenizer_files=["tokenizer.json"],
+            )
+
+        self.assertEqual(info["task"]["label2id"], {"O": 0, "B": 1, "I": 2})
+        self.assertEqual(info["source"]["base_model"], "/models/BidirLM-0.6B-Base")
+        self.assertEqual(info["source"]["finetuning_mode"], "lora")
+        self.assertEqual(info["graph"]["hidden_size"], 1024)
+        self.assertEqual(info["graph"]["dynamic_axes"], ["batch", "sequence"])
+        # The tokenizer flags are the part callers cannot infer from the graph.
+        self.assertEqual(
+            info["tokenizer"]["call_arguments"],
+            {
+                "add_special_tokens": True,
+                "truncation": False,
+                "return_offsets_mapping": True,
+            },
+        )
+        self.assertIn("Viterbi", info["postprocessing"]["decoding"])
+        json.dumps(info)  # must stay serializable
+
+    def test_export_info_without_checkpoint_metadata(self):
+        from bidirlm_BIO_finetune.export_onnx import build_export_info
+
+        with tempfile.TemporaryDirectory() as directory:
+            info = build_export_info(
+                Path(directory),
+                dtype="float16",
+                opset=17,
+                mask_mode="4d",
+                info={},
+                tokenizer_files=[],
+            )
+        self.assertEqual(info["source"], {})
+        self.assertEqual(info["graph"]["dtype"], "float16")
+
     def test_consolidate_is_a_noop_without_external_data(self):
         onnx = pytest_importorskip_onnx()
         from onnx import TensorProto, helper

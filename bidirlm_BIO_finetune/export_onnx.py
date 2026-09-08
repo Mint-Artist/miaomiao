@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -437,6 +438,118 @@ def verify(
     }
 
 
+def build_export_info(
+    checkpoint: Path,
+    *,
+    dtype: str,
+    opset: int,
+    mask_mode: str,
+    info: Dict[str, Any],
+    tokenizer_files: Sequence[str],
+) -> Dict[str, Any]:
+    """Describe the bundle for whoever deploys it months from now.
+
+    Everything a caller must get right but cannot infer from the graph lives
+    here: the tokenizer flags (wrong ones shift every character span without
+    erroring), the decoding recipe, and what the labels mean.
+    """
+
+    source: Dict[str, Any] = {}
+    metadata_path = checkpoint / "select_config.json"
+    if metadata_path.is_file():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        source = {
+            "checkpoint": str(checkpoint),
+            "base_model": metadata.get("base_model_name_or_path"),
+            "finetuning_mode": metadata.get("exported_from_mode")
+            or metadata.get("finetuning_mode"),
+        }
+    return {
+        "format": "select-bidirlm-onnx-v1",
+        "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source": source,
+        "task": {
+            "name": "SELECT token classification for pre-training data cleaning",
+            "label2id": {"O": 0, "B": 1, "I": 2},
+            "id2label": {"0": "O", "1": "B", "2": "I"},
+            "labels": {
+                "O": "noise token, removed",
+                "B": "first token of a retained segment",
+                "I": "continuation of a retained segment",
+            },
+            "output_text": (
+                "concatenate the B/I character spans; the result is always a "
+                "verbatim subsequence of the input, never generated text"
+            ),
+            "empty_output_means": "the whole document is noise; discard it",
+        },
+        "graph": {
+            "inputs": {
+                "input_ids": {"dtype": "int64", "shape": ["batch", "sequence"]},
+                "attention_mask": {
+                    "dtype": "int64",
+                    "shape": ["batch", "sequence"],
+                    "semantics": "1 for real tokens, 0 for right padding",
+                },
+            },
+            "outputs": {
+                "classification_logits": {
+                    "dtype": dtype,
+                    "shape": ["batch", "sequence", 3],
+                },
+                "transition_logits": {
+                    "dtype": dtype,
+                    "shape": ["batch", "sequence", 3, 3],
+                    "semantics": "logits[i, u, v] scores label u at i -> v at i+1",
+                },
+            },
+            "dtype": dtype,
+            "opset": opset,
+            "mask_mode": mask_mode,
+            "dynamic_axes": ["batch", "sequence"],
+            "hidden_size": info.get("hidden_size"),
+            "vocab_size": info.get("vocab_size"),
+        },
+        "tokenizer": {
+            "files": list(tokenizer_files),
+            "load_with": "transformers AutoTokenizer(use_fast=True), or tokenizers.Tokenizer.from_file",
+            "call_arguments": {
+                "add_special_tokens": True,
+                "truncation": False,
+                "return_offsets_mapping": True,
+            },
+            "warning": (
+                "offset_mapping must come from the same fast tokenizer used in "
+                "training; different flags shift every character span silently"
+            ),
+        },
+        "inference": {
+            "window": 8192,
+            "stride": 6144,
+            "window_rule": (
+                "documents longer than window are split into overlapping "
+                "windows; each position keeps the logits from the window where "
+                "it is farthest from an edge"
+            ),
+            "bucket_padding": (
+                "fixed-shape backends: right-pad to a bucket with "
+                "attention_mask 0 and drop the padded tail before decoding"
+            ),
+            "pad_token_id": 0,
+            "reference_implementation": "onnx_inference.py",
+        },
+        "postprocessing": {
+            "decoding": "log_softmax then Viterbi over classification + transition logits",
+            "decode_precision": "float32, outside the graph",
+            "boundary_rules": (
+                "optional: snap segment edges to sentence boundaries and strip "
+                "unpaired opening brackets/quotes; see postprocess.py"
+            ),
+            "downstream_filter": "project convention: drop segments shorter than 300 characters",
+        },
+    }
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     dtype = DTYPES[args.dtype]
@@ -477,23 +590,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     tokenizer_files = copy_tokenizer(Path(args.checkpoint), output.parent)
     (output.parent / "export_info.json").write_text(
         json.dumps(
-            {
-                "format": "select-bidirlm-onnx-v1",
-                "inputs": {
-                    "input_ids": "int64 [batch, sequence]",
-                    "attention_mask": "int64 [batch, sequence], 1 real / 0 padding",
-                },
-                "outputs": {
-                    "classification_logits": "float [batch, sequence, 3]",
-                    "transition_logits": "float [batch, sequence, 3, 3]",
-                },
-                "label2id": {"O": 0, "B": 1, "I": 2},
-                "dtype": args.dtype,
-                "opset": args.opset,
-                "recommended_window": 8192,
-                "recommended_stride": 6144,
-                "decoding": "log_softmax + Viterbi outside the graph; see onnx_inference.py",
-            },
+            build_export_info(
+                Path(args.checkpoint),
+                dtype=args.dtype,
+                opset=args.opset,
+                mask_mode=args.mask_mode,
+                info=info,
+                tokenizer_files=tokenizer_files,
+            ),
             ensure_ascii=False,
             indent=2,
         )
