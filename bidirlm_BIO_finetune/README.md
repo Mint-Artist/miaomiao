@@ -457,3 +457,34 @@ python -m bidirlm_BIO_finetune.standalone_inference \
   不触及 2GB 上限，产出就是单个 `model.onnx`，没有 external data。
 - 图内只有主干和两个 head。分词器（`tokenizer/`）、Viterbi 解码、token 到字符的
   映射、边界后处理都在图外，部署时仍需一并带上。
+
+## 纯 numpy 的 ONNX 推理参考实现（用于迁移到其他框架）
+
+`standalone_inference.py --backend onnx` 已经能跑 ONNX，但它在模块顶层依赖 torch。
+若要照着移植到公司框架，用 `onnx_inference.py`：只依赖 numpy、onnxruntime 和一个
+分词器，**不依赖 torch**。
+
+```bash
+python -m bidirlm_BIO_finetune.onnx_inference \
+  --model exports/select_v1_onnx/model.onnx \
+  --tokenizer exports/select_v1/tokenizer \
+  --input raw.jsonl --output refined.jsonl --postprocess
+```
+
+固定 shape 的后端（ATC/OM、TensorRT 固定 profile）加 `--buckets`，每个窗口会右侧
+padding 到最近档位、`attention_mask` 补 0，解码前再切掉：
+
+```bash
+python -m bidirlm_BIO_finetune.onnx_inference \
+  --model model.onnx --tokenizer tokenizer \
+  --input raw.jsonl --output refined.jsonl \
+  --window 8192 --stride 6144 --buckets 512,1024,2048,4096,8192
+```
+
+移植时只需替换 `OnnxRunner` 一个类，它的契约是：输入 `[1, L]` 的 int64
+`input_ids` 与 `attention_mask`，返回 `classification_logits[L, 3]` 和
+`transition_logits[L, 3, 3]`。其余部分（log_softmax、Viterbi、滑窗拼接、
+token 到字符的映射、分档 padding）都是普通 numpy 代码，可直接翻译成目标语言。
+
+单元测试逐项对拍了 numpy 与 torch 实现的 log_softmax、Viterbi 解码路径、
+滑窗切分和 span 映射结果，确保两条实现产出完全一致。
