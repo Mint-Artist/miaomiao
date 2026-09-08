@@ -446,7 +446,10 @@ python -m bidirlm_BIO_finetune.standalone_inference \
 ### 导出产物不是一个自足的文件
 
 - `float16`（约 1.2GB）可以是单个 `model.onnx`；`float32`（约 2.4GB）超过 protobuf
-  的 2GB 上限，PyTorch 会自动改用 external data，产出 `model.onnx` 加一个权重文件，
-  两者必须一起拷贝。脚本输出的 `files` 字段会列出实际生成的全部文件。
+  的 2GB 上限，必须使用 external data。torch 默认**每个张量写一个文件**，会产生几百个
+  以张量命名的碎文件（`onnx__MatMul_8481`、`backbone.embed_tokens.weight` …），
+  它们必须和 `model.onnx` 放在同一目录、一个都不能少。脚本默认会把它们合并成单个
+  `model.onnx.data`，最终只有两个文件；`--no-consolidate` 可保留原始形态。
+  输出的 `files` 字段列出目录下的全部文件，`external_data` 字段说明是否已合并。
 - 图内只有主干和两个 head。分词器（`tokenizer/`）、Viterbi 解码、token 到字符的
   映射、边界后处理都在图外，部署时仍需一并带上。

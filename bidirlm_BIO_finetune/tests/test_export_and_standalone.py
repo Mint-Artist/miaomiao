@@ -262,16 +262,29 @@ class OnnxWrapperTests(unittest.TestCase):
         self.assertTrue(torch.allclose(classification, expected_cls[0]))
         self.assertTrue(torch.allclose(transition, expected_tr[0]))
 
-    def test_exported_files_lists_external_data_siblings(self):
+    def test_exported_files_lists_scattered_external_data(self):
         from bidirlm_BIO_finetune.export_onnx import exported_files
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "model.onnx"
             output.write_bytes(b"graph")
-            (Path(directory) / "model.onnx.data").write_bytes(b"weights!!")
-            (Path(directory) / "unrelated.json").write_text("{}", encoding="utf-8")
+            # torch names per-tensor files after the tensors, not the model.
+            (Path(directory) / "onnx__MatMul_8481").write_bytes(b"w" * 8)
+            (Path(directory) / "backbone.embed_tokens.weight").write_bytes(b"w" * 4)
             listed = {item["file"] for item in exported_files(output)}
-        self.assertEqual(listed, {"model.onnx", "model.onnx.data"})
+        self.assertEqual(
+            listed,
+            {"model.onnx", "onnx__MatMul_8481", "backbone.embed_tokens.weight"},
+        )
+
+    def test_consolidate_is_a_noop_without_external_data(self):
+        from bidirlm_BIO_finetune.export_onnx import consolidate_external_data
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "model.onnx"
+            output.write_bytes(b"graph")
+            result = consolidate_external_data(output)
+        self.assertFalse(result["consolidated"])
 
 
 if __name__ == "__main__":

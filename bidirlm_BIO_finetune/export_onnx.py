@@ -126,6 +126,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="comma-separated lengths re-checked against PyTorch after export",
     )
     parser.add_argument("--tolerance", type=float, default=2e-3)
+    parser.add_argument(
+        "--no-consolidate",
+        action="store_true",
+        help=(
+            "keep torch's one-file-per-tensor external data instead of merging "
+            "it into a single <model>.onnx.data sibling"
+        ),
+    )
     parser.add_argument("--skip-verify", action="store_true")
     parser.add_argument("--attention-implementation", default="eager")
     return parser
@@ -214,14 +222,56 @@ def export(
 
 
 def exported_files(output: Path) -> List[Dict[str, Any]]:
-    """List the .onnx file plus any external-data siblings it created."""
+    """List every file in the output directory; all of them must be copied.
 
-    directory = output.parent
-    files = []
-    for path in sorted(directory.iterdir()):
-        if path.is_file() and (path == output or path.name.startswith(output.name)):
-            files.append({"file": path.name, "bytes": path.stat().st_size})
-    return files
+    Weights above the 2GB protobuf limit live in external-data files whose
+    names come from the tensors, not from the model, so matching on the model
+    filename would under-report what deployment needs.
+    """
+
+    return [
+        {"file": path.name, "bytes": path.stat().st_size}
+        for path in sorted(output.parent.iterdir())
+        if path.is_file()
+    ]
+
+
+def consolidate_external_data(output: Path) -> Dict[str, Any]:
+    """Rewrite per-tensor external-data files into a single ``.data`` sibling.
+
+    torch.onnx.export writes one file per tensor once the model exceeds the
+    2GB protobuf limit, which leaves hundreds of files that must all travel
+    together. Consolidating keeps that to two.
+    """
+
+    import onnx
+
+    location = output.name + ".data"
+    stale = [
+        path
+        for path in output.parent.iterdir()
+        if path.is_file() and path.name not in {output.name, location}
+    ]
+    if not stale:
+        return {"consolidated": False, "reason": "weights already fit in the model file"}
+
+    model = onnx.load(str(output))  # pulls the external tensors into memory
+    onnx.save_model(
+        model,
+        str(output),
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location=location,
+        size_threshold=1024,
+        convert_attribute=False,
+    )
+    for path in stale:
+        path.unlink()
+    return {
+        "consolidated": True,
+        "location": location,
+        "removed_files": len(stale),
+    }
 
 
 def verify(
@@ -339,8 +389,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         exporter=args.exporter,
     )
 
+    consolidation: Dict[str, Any] = {"consolidated": False, "reason": "disabled"}
+    if not args.no_consolidate:
+        try:
+            consolidation = consolidate_external_data(output)
+        except ImportError:
+            consolidation = {"consolidated": False, "reason": "onnx not installed"}
+
     summary: Dict[str, Any] = {
         "output": str(output),
+        "external_data": consolidation,
         "files": exported_files(output),
         "dtype": args.dtype,
         "opset": args.opset,
