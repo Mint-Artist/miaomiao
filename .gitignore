@@ -7,3 +7,6 @@ target/
 build/
 .idea/
 .vscode/
+__pycache__/
+npv/claude/npv_lab/runs/
+npv/claude/npv_lab/results.tsv
