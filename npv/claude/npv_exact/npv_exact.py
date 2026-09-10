@@ -387,7 +387,9 @@ class PageValueScoreExact:
         return float(adc)
 
     def pre_pr(self, pr):
-        if pr < self.t.pr_split[0]:  # pr_split 为空时 IndexOutOfBounds，与 Java 一致
+        if not self.t.pr_split:
+            raise JavaJobFailure("IndexOutOfBoundsException: prSplit 为空，prSplit.get(0) 失败（pr_split 文件至少要有一行）")
+        if pr < self.t.pr_split[0]:
             return F("0.01")
         for idx in range(len(self.t.pr_split) - 1):
             if pr > self.t.pr_split[idx] and pr <= self.t.pr_split[idx]:  # 原样保留：恒为假
