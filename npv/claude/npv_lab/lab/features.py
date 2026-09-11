@@ -4,7 +4,7 @@
 
 约定：
 - 返回 dict，键是特征名，值是 float；
-- 前 7 个键必须与基线一致（sr, spr, spr_sr, dr, ow, pr, adc），流水线的 adc 逻辑依赖 "adc"；
+- 前 6 个键必须与基线一致（sr, spr, spr_sr, dr, ow, adc），流水线的 adc 逻辑依赖 "adc"；
 - 在 config.fea_weight 中没有出现的特征，权重视为 0，只记录不参与打分，因此可以放心添加；
 - 新特征加进 fea_weight 之后才会影响分数。
 """
@@ -16,14 +16,13 @@ PC_BITS = (10, 11, 13, 16, 18, 19, 20, 22, 24, 26, 29, 32, 33, 38)
 
 
 def baseline_features(scorer, x, site, site_list):
-    """与 npv_py 基线完全一致的 7 个特征。不要改这段，改下面的 extra_features。"""
+    """与 npv_py 基线完全一致的 6 个特征。不要改这段，改下面的 extra_features。"""
     f = {}
     f["sr"] = scorer.pre_sr(x.sr)
     f["spr"] = scorer.pre_spr(x.spr)
     f["spr_sr"] = scorer.sr_spr_score(f["sr"], f["spr"])
     f["dr"] = scorer.pre_dr(site)
     f["ow"] = scorer.pre_ow(site, site_list)
-    f["pr"] = scorer.pre_pr(x.pr)
     f["adc"] = scorer.pre_adc(x.url, x.adc)
     return f
 

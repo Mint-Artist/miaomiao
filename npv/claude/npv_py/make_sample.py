@@ -47,10 +47,6 @@ def main():
     write(os.path.join(a.out, "ow.tsv"), ["www.zhihu.com\t1", "shop.taobao.com\t1", "www.example.com\t0"])
     write(os.path.join(a.out, "ow_blacklist.txt"), ["spam.example.org"])
     write(os.path.join(a.out, "adc_whitelist.txt"), ["moe.edu.cn"])
-    # pr 分位切分点：100 个升序值
-    prs = sorted(rnd.lognormvariate(0, 1) for _ in range(20000))
-    split = [prs[int(len(prs) * q / 100)] for q in range(100)]
-    write(os.path.join(a.out, "pr_split.tsv"), [f"p{q}\t{v:.6f}" for q, v in enumerate(split)])
 
     # 输入
     now = 1757030400  # 2026-09-05 00:00:00 UTC
@@ -68,7 +64,6 @@ def main():
             pct *= 1000  # 13 位毫秒
         pt = 0 if rnd.random() < 0.3 else now - rnd.randint(0, 4000) * 86400
         obj = {
-            "pr": f"{rnd.lognormvariate(0, 1):.4f}",
             "adc": json.dumps({"level": level}) if level else "",
             "pcLong": pc, "pct": pct, "pt": pt,
             "pureTextLen": rnd.choice([50, 200, 400, 800, 3000]),

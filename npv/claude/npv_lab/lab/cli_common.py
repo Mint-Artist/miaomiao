@@ -18,7 +18,6 @@ def add_table_args(p: argparse.ArgumentParser, with_input: bool = True) -> None:
     p.add_argument("--dr-site", required=True)
     p.add_argument("--dr-suffix", required=True)
     p.add_argument("--ow", required=True)
-    p.add_argument("--pr-split", required=True)
     p.add_argument("--ow-blacklist", required=True)
     p.add_argument("--adc-whitelist", required=True)
     p.add_argument("--region", default="", help="'zh' 使用中文区官网白名单")
@@ -27,7 +26,7 @@ def add_table_args(p: argparse.ArgumentParser, with_input: bool = True) -> None:
 
 
 def build_scorer(args) -> Tuple[LabScorer, tuple]:
-    tables = load_tables(args.spr, args.dr_site, args.dr_suffix, args.ow, args.pr_split,
+    tables = load_tables(args.spr, args.dr_site, args.dr_suffix, args.ow,
                          args.ow_blacklist, args.adc_whitelist)
     cfg = load_config(args.config) if args.config else ScoreConfig()
     now = args.now if args.now is not None else int(time.time())

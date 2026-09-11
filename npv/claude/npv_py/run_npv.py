@@ -3,7 +3,7 @@
 
 用法示例：
   python run_npv.py --input sample/input.tsv --spr sample/spr.tsv --dr-site sample/dr_site.tsv \
-      --dr-suffix sample/dr_suffix.tsv --ow sample/ow.tsv --pr-split sample/pr_split.tsv \
+      --dr-suffix sample/dr_suffix.tsv --ow sample/ow.tsv \
       --ow-blacklist sample/ow_blacklist.txt --adc-whitelist sample/adc_whitelist.txt \
       --output out --region zh --scroll 1 --now 1757030400
 
@@ -31,7 +31,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dr-site", required=True)
     p.add_argument("--dr-suffix", required=True)
     p.add_argument("--ow", required=True)
-    p.add_argument("--pr-split", required=True)
     p.add_argument("--ow-blacklist", required=True)
     p.add_argument("--adc-whitelist", required=True)
     p.add_argument("--output", required=True)
@@ -43,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run(args, config: ScoreConfig = None) -> dict:
     now = args.now if args.now is not None else int(time.time())
-    tables = load_tables(args.spr, args.dr_site, args.dr_suffix, args.ow, args.pr_split,
+    tables = load_tables(args.spr, args.dr_site, args.dr_suffix, args.ow,
                          args.ow_blacklist, args.adc_whitelist)
     scorer = PageValueScore(tables, now, config)
     site_list = region_site_list(args.region)

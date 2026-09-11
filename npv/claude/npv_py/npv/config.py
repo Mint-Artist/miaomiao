@@ -49,7 +49,7 @@ DEFAULT_PC_RULES: Tuple[PcRule, ...] = (
 class ScoreConfig:
     # 基础分权重（Java: FEA_WEIGHT）
     fea_weight: Dict[str, float] = field(
-        default_factory=lambda: {"spr_sr": 60, "pr": 4, "dr": 12, "ow": 4})
+        default_factory=lambda: {"spr_sr": 60, "dr": 12, "ow": 4})  # 2026-09-11 起去掉 pr
 
     # dr 归一化分母（Java: MAX_DR）
     max_dr: float = 3.0

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """跑一轮实验：用某个配置打分 -> 评估 -> 与基线配对比较 -> 追加一行到 results.tsv。
 
-  python experiment.py --name exp1 --config configs/exp1.json --note "pr 权重 4->10" \
+  python experiment.py --name exp1 --config configs/exp1.json --note "dr 权重 12->20" \
       --input ... [表参数] --pairs labels/pairs.tsv --grades labels/grades.tsv --baseline runs/baseline/npv_ori.tsv
 
 自改进循环的骨架：每轮 agent 改 features.py 或配置，然后调用本脚本，读 results.tsv 决定保留还是回退。
@@ -17,7 +17,7 @@ import lab  # noqa: F401
 from lab import LAB_DIR
 from lab.evaluate import compare_pairwise, evaluate, read_pairs, read_scores
 
-TABLE_ARGS = ("spr", "dr_site", "dr_suffix", "ow", "pr_split", "ow_blacklist", "adc_whitelist")
+TABLE_ARGS = ("spr", "dr_site", "dr_suffix", "ow", "ow_blacklist", "adc_whitelist")
 
 
 def main(argv=None):

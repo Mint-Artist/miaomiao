@@ -23,22 +23,15 @@ def tables(**kw):
     t.dr_suffix_order = e.java_hashmap_order(list(t.dr_suffix))
     t.ow = kw.get("ow", {"www.zhihu.com": "1"})
     t.spr_max = kw.get("spr_max", e.f32(10.0))
-    t.pr_split = kw.get("pr_split", [e.f32(float(i)) for i in range(1, 11)])
     t.ow_blacklist = kw.get("ow_blacklist", ["spam.example.org"])
     t.adc_whitelist = kw.get("adc_whitelist", ["moe.edu.cn"])
     return t
 
 
 class PreservedBugs(unittest.TestCase):
-    def test_p0_1_pr_is_binary(self):
-        s = e.PageValueScoreExact(tables(), NOW)
-        self.assertEqual(s.pre_pr(0.5), e.f32(0.01))
-        for pr in (1.0, 1.5, 5.0, 9.99, 10.0, 100.0):
-            self.assertEqual(s.pre_pr(pr), 1.0, pr)
-
     def test_p0_2_spr_normalized_twice(self):
         s = e.PageValueScoreExact(tables(spr_max=e.f32(10.0)), NOW)
-        s.gen_feature("https://x.com/", 100, 10.0, 0.0, 0, [])
+        s.gen_feature("https://x.com/", 100, 10.0, 0, [])
         self.assertEqual(s.feature_list["spr"], 1.0)                 # 第一次 /10
         # 第二次 /10 -> 0.1，不超过 0.2 阈值，不映射；srNew = (1 + 0.25*0.1)/1.1
         expect = e.f32(e.f32(1.0 + e.f32(e.F("0.25") * e.f32(0.1))) / e.F("1.1"))
@@ -58,15 +51,15 @@ class PreservedBugs(unittest.TestCase):
 
     def test_p0_7_spr_max_zero_gives_nan(self):
         s = e.PageValueScoreExact(tables(spr_max=0.0), NOW)
-        s.gen_feature("https://x.com/", 100, 0.0, 0.0, 0, [])
+        s.gen_feature("https://x.com/", 100, 0.0, 0, [])
         self.assertTrue(math.isnan(s.feature_list["spr"]) or math.isinf(s.feature_list["spr"]))
 
     def test_pt_gate_and_skip_for_adc(self):
         s = e.PageValueScoreExact(tables(), NOW)
-        base = s.score("https://x.com/a", 0.0, 0, 0, "0", "12345", 1000, 50, 5.0, [])
-        old = s.score("https://x.com/a", 0.0, 0, 0, "0", str(NOW - 3000 * 86400), 1000, 50, 5.0, [])
+        base = s.score("https://x.com/a", 0, 0, "0", "12345", 1000, 50, 5.0, [])
+        old = s.score("https://x.com/a", 0, 0, "0", str(NOW - 3000 * 86400), 1000, 50, 5.0, [])
         self.assertLess(old, base)   # pt 长度 > 5 才衰减
-        a2 = s.score("https://x.com/a", 0.0, 2, 1 << 13, "0", str(NOW - 3000 * 86400), 1000, 50, 5.0, [])
+        a2 = s.score("https://x.com/a", 2, 1 << 13, "0", str(NOW - 3000 * 86400), 1000, 50, 5.0, [])
         self.assertAlmostEqual(a2, s.adjust_score_pct("0", s.get_basic_score(0.0)) + 10)  # adc=2 跳过 pc 与 pt
 
     def test_empty_line_in_whitelist_marks_everything(self):
@@ -88,9 +81,9 @@ class JavaSemantics(unittest.TestCase):
 
     def test_feature_json_format(self):
         s = e.PageValueScoreExact(tables(), NOW)
-        s.score("https://www.zhihu.com/q", 5.0, 0, 0, "0", "0", 1000, 86, 5.0, [])
+        s.score("https://www.zhihu.com/q", 0, 0, "0", "0", 1000, 86, 5.0, [])
         j = s.feature_json()
-        self.assertTrue(j.startswith('{"adc":0,"pr":1,'))
+        self.assertTrue(j.startswith('{"adc":0,"spr":'), j)
         self.assertIn('"sr":0.86}', j)
 
     def test_split_and_parsers(self):
@@ -111,16 +104,15 @@ class JavaSemantics(unittest.TestCase):
         self.assertEqual(e.java_double_to_string(12345678.9), "1.23456789E7")
 
     def test_parse_line_failures(self):
-        ok = 'https://a.com/x\tx\t5\tx\tx\t{"pr":"1.5","adc":"{\\"level\\":2}","pcLong":1024,"pureTextLen":800,"sr":70,"spr":3.2}'
+        ok = 'https://a.com/x\tx\t5\tx\tx\t{"adc":"{\\"level\\":2}","pcLong":1024,"pureTextLen":800,"sr":70,"spr":3.2}'
         r = e.parse_input_line(ok)
-        self.assertEqual((r["flag"], r["pr"], r["level"], r["pc"], r["pct"]), ("5", 1.5, 2, 1024, "0"))
+        self.assertEqual((r["flag"], r["level"], r["pc"], r["pct"]), ("5", 2, 1024, "0"))
         for line, msg in (
             ("u\tx\t0", "ArrayIndexOutOfBounds"),
             ("u\tx\t0\tx\tx\tnot-json", "JSONException"),
-            ('u\tx\t0\tx\tx\t{"pr":"1","adc":"","sr":1,"spr":1}', "pureTextLen"),
-            ('u\tx\t0\tx\tx\t{"adc":"","pureTextLen":1,"sr":1,"spr":1}', "pr 为 null"),
-            ('u\tx\t0\tx\tx\t{"pr":"1","pureTextLen":1,"sr":1,"spr":1}', "adc 为 null"),
-            ('u\tx\t0\tx\tx\t{"pr":"1","adc":"{}","pureTextLen":1,"sr":1,"spr":1}', "Integer.parseInt(null)"),
+            ('u\tx\t0\tx\tx\t{"adc":"","sr":1,"spr":1}', "pureTextLen"),
+            ('u\tx\t0\tx\tx\t{"pureTextLen":1,"sr":1,"spr":1}', "adc 为 null"),
+            ('u\tx\t0\tx\tx\t{"adc":"{}","pureTextLen":1,"sr":1,"spr":1}', "Integer.parseInt(null)"),
         ):
             with self.assertRaises(e.JavaJobFailure) as cm:
                 e.parse_input_line(line)
@@ -142,7 +134,7 @@ class EndToEnd(unittest.TestCase):
     def test_cli(self):
         args = ["--input", os.path.join(SAMPLE, "input.tsv")]
         for flag, f in (("--spr", "spr.tsv"), ("--dr-site", "dr_site.tsv"), ("--dr-suffix", "dr_suffix.tsv"),
-                        ("--ow", "ow.tsv"), ("--pr-split", "pr_split.tsv"), ("--ow-blacklist", "ow_blacklist.txt"),
+                        ("--ow", "ow.tsv"), ("--ow-blacklist", "ow_blacklist.txt"),
                         ("--adc-whitelist", "adc_whitelist.txt")):
             args += [flag, os.path.join(SAMPLE, f)]
         args += ["--region", "zh", "--now", str(NOW)]

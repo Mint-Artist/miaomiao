@@ -1,5 +1,7 @@
 """打分核心，对应 Java 立即修复版 PageValueScore。
 
+2026-09-11：离线端不再生产 pr，已删除全部 pr 逻辑（ScoreInput.pr、pre_pr、特征 pr 与权重）。
+
 与 Java 的差异（有意为之）：
 - score() 返回 (分数, 特征 dict)，不再通过实例字段 featureList 传递结果；
 - 全部参数来自 ScoreConfig，可注入替换；
@@ -20,7 +22,6 @@ TimeLike = Union[str, int, None]
 class ScoreInput:
     """一条待打分记录，字段与 Java score() 的入参一一对应。"""
     url: str
-    pr: float
     adc: int            # adc.level
     pc: int             # 页面类别位图（Java: pcLong）
     pct: TimeLike       # 秒级时间戳，缺失可为 0/None
@@ -60,16 +61,6 @@ class PageValueScore:
             if w in url:  # 与 Java 一致：整个 URL 上做子串匹配（报告 P1-3）
                 return float(self.cfg.adc_whitelist_level)
         return float(adc)
-
-    def pre_pr(self, pr: float) -> float:
-        split = self.t.pr_split
-        n = len(split)
-        if n == 0 or pr <= split[0]:
-            return 0.0
-        for idx in range(n - 1):
-            if split[idx] < pr <= split[idx + 1]:
-                return (idx + 1) / n
-        return 1.0
 
     def pre_dr(self, site: str) -> float:
         v = self.t.dr_site.get(site)
@@ -115,7 +106,6 @@ class PageValueScore:
         f["spr_sr"] = self.sr_spr_score(f["sr"], f["spr"])
         f["dr"] = self.pre_dr(site)
         f["ow"] = self.pre_ow(site, site_list)
-        f["pr"] = self.pre_pr(x.pr)
         f["adc"] = self.pre_adc(x.url, x.adc)
         return f
 

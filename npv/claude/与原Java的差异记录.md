@@ -2,6 +2,8 @@
 
 用途：当 Python 版本的分数与线上 Spark 作业对不上时，按本文逐项排查。日期：2026-09-10。
 
+> **2026-09-11 更新：** 离线端不再生产 pr 特征，fixed Java 与三个 Python 版本已一并删除全部 pr 逻辑（`prSplit` 表与 `--pr-split` 参数、`preProcessPr`、特征 `pr` 及其 4 分权重、Main 里对 JSON `pr` 字段的读取）。fixed Java 的位置参数因此前移一位（原 args[6] 到 args[12] 变为 args[5] 到 args[11]）。若线上 Java 尚未删除而输入 JSON 已没有 `pr` 键，线上会在 `pr.isEmpty()` 处空指针整体失败。下文关于 P0-1 与第二部分第 9 项之前对 pr 的描述仅作历史记录。
+
 四个版本的关系：
 
 ```

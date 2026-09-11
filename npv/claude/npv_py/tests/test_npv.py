@@ -29,7 +29,6 @@ def make_tables(**kw) -> Tables:
         dr_suffix={"edu.cn": "3", ".com": "2"},
         ow={"www.zhihu.com": "1"},
         spr_max=10.0,
-        pr_split=[float(i) for i in range(1, 11)],  # 1..10，共 10 个切分点
         ow_blacklist=["spam.example.org"],
         adc_whitelist=["moe.edu.cn"],
     )
@@ -38,7 +37,7 @@ def make_tables(**kw) -> Tables:
 
 
 def make_input(**kw) -> ScoreInput:
-    base = dict(url="https://www.example.com/a", pr=0.0, adc=0, pc=0, pct=0, pt=0,
+    base = dict(url="https://www.example.com/a", adc=0, pc=0, pct=0, pt=0,
                 pure_text_len=1000, sr=50, spr=5.0)
     base.update(kw)
     return ScoreInput(**base)
@@ -67,19 +66,6 @@ class TimeTests(unittest.TestCase):
 class FeatureTests(unittest.TestCase):
     def setUp(self):
         self.s = PageValueScore(make_tables(), NOW)
-
-    def test_pre_pr_monotone(self):
-        s = self.s
-        self.assertEqual(s.pre_pr(0.5), 0.0)      # <= 最小切分点
-        self.assertEqual(s.pre_pr(1.0), 0.0)
-        self.assertAlmostEqual(s.pre_pr(1.5), 0.1)  # (1,2] -> 1/10
-        self.assertAlmostEqual(s.pre_pr(2.0), 0.1)  # 右闭
-        self.assertAlmostEqual(s.pre_pr(9.5), 0.9)
-        self.assertEqual(s.pre_pr(10.0), 0.9)
-        self.assertEqual(s.pre_pr(11.0), 1.0)
-        vals = [s.pre_pr(x / 10) for x in range(0, 120)]
-        self.assertEqual(vals, sorted(vals))
-        self.assertEqual(PageValueScore(make_tables(pr_split=[]), NOW).pre_pr(5.0), 0.0)
 
     def test_sr_spr_score_piecewise(self):
         s = self.s
@@ -151,14 +137,14 @@ class ScoreTests(unittest.TestCase):
     def test_end_to_end_hand_computed(self):
         s = PageValueScore(make_tables(), NOW)
         # sr=100 -> 1.0; spr=10 -> 1.0 -> 映射 1.0; spr_sr = 1.25/1.1
-        # dr: .com -> 2/3; ow: zhihu 官网 -> 1; pr=5 -> (5 in (4,5]) -> 4/10
-        x = make_input(url="https://www.zhihu.com/question/1", sr=100, spr=10.0, pr=5.0,
+        # dr: .com -> 2/3; ow: zhihu 官网 -> 1
+        x = make_input(url="https://www.zhihu.com/question/1", sr=100, spr=10.0,
                        pct=NOW - 365 * DAY, pt=NOW - 365 * DAY, pure_text_len=1000, pc=1 << 10)
         r = s.score(x, ())
-        basic = 60 * (1.25 / 1.1) + 4 * 0.4 + 12 * (2 / 3) + 4 * 1.0
+        basic = 60 * (1.25 / 1.1) + 12 * (2 / 3) + 4 * 1.0
         expected = basic * decay_factor(x.pct, NOW, 2000.0) * 0.7 * decay_factor(x.pt, NOW, 3000.0)
         self.assertAlmostEqual(r.score, expected, places=9)
-        self.assertEqual(list(r.features), ["sr", "spr", "spr_sr", "dr", "ow", "pr", "adc"])
+        self.assertEqual(list(r.features), ["sr", "spr", "spr_sr", "dr", "ow", "adc"])
 
     def test_adc_high_skips_pc_and_pt(self):
         s = PageValueScore(make_tables(), NOW)
@@ -173,7 +159,7 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(s1.score(x, ()).score, s2.score(x, ()).score)
 
     def test_config_injection(self):
-        cfg = ScoreConfig(fea_weight={"spr_sr": 0, "pr": 0, "dr": 0, "ow": 100},
+        cfg = ScoreConfig(fea_weight={"spr_sr": 0, "dr": 0, "ow": 100},
                           pc_rules=(PcRule("only13", 13, 0.5),))
         s = PageValueScore(make_tables(), NOW, cfg)
         x = make_input(url="https://www.zhihu.com/", pc=1 << 10)  # bit10 不再是规则
@@ -215,14 +201,13 @@ class NormalizationTests(unittest.TestCase):
 
 class IoTests(unittest.TestCase):
     def test_parse_line(self):
-        obj = {"pr": "1.5", "adc": json.dumps({"level": 2}), "pcLong": 1024, "pct": "1757030400",
+        obj = {"adc": json.dumps({"level": 2}), "pcLong": 1024, "pct": "1757030400",
                "pureTextLen": 800, "sr": 70, "spr": 3.2}
         x, flag = parse_line("\t".join(["https://a.com/x", "x", "5", "x", "x", json.dumps(obj)]))
-        self.assertEqual((x.url, flag, x.pr, x.adc, x.pc, x.pct, x.pt), ("https://a.com/x", "5", 1.5, 2, 1024, 1757030400, 0))
+        self.assertEqual((x.url, flag, x.adc, x.pc, x.pct, x.pt), ("https://a.com/x", "5", 2, 1024, 1757030400, 0))
         obj["adc"] = {"level": 1}  # adc 直接是对象也接受
-        obj["pr"] = ""
         x, _ = parse_line("\t".join(["u", "x", "0", "x", "x", json.dumps(obj)]))
-        self.assertEqual((x.pr, x.adc), (0.0, 1))
+        self.assertEqual(x.adc, 1)
 
     def test_bad_rows(self):
         for line in ("u\tx\t0\tx\tx\tnot-json", "u\tx\t0", "u\tx\t0\tx\tx\t" + json.dumps({"sr": 1})):
@@ -254,7 +239,7 @@ class EndToEndTests(unittest.TestCase):
                             "--rows", "2000"], check=True, capture_output=True)
             args = ["--input", f"{sample}/input.tsv", "--spr", f"{sample}/spr.tsv",
                     "--dr-site", f"{sample}/dr_site.tsv", "--dr-suffix", f"{sample}/dr_suffix.tsv",
-                    "--ow", f"{sample}/ow.tsv", "--pr-split", f"{sample}/pr_split.tsv",
+                    "--ow", f"{sample}/ow.tsv",
                     "--ow-blacklist", f"{sample}/ow_blacklist.txt",
                     "--adc-whitelist", f"{sample}/adc_whitelist.txt",
                     "--output", out, "--region", "zh", "--scroll", "1", "--now", str(NOW)]
@@ -271,7 +256,7 @@ class EndToEndTests(unittest.TestCase):
             for l in ori:
                 url, score, fea = l.split("\t")
                 self.assertFalse(math.isnan(float(score)))
-                self.assertEqual(set(json.loads(fea)), {"sr", "spr", "spr_sr", "dr", "ow", "pr", "adc"})
+                self.assertEqual(set(json.loads(fea)), {"sr", "spr", "spr_sr", "dr", "ow", "adc"})
 
 
 if __name__ == "__main__":

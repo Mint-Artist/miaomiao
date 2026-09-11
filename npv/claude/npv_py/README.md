@@ -1,5 +1,7 @@
 # npv_py：NPV 网页权威度打分的 Python 复刻
 
+> 2026-09-11：离线端不再生产 pr 特征，本目录及 npv_lab、npv_exact 已删除全部 pr 逻辑（`--pr-split` 参数、pr 特征与 4 分权重）。下文凡提到 pr 的历史描述均已失效。
+
 目的：在没有 Spark 集群和 Java 环境的情况下，用同一套逻辑在本地对样本数据快速跑分、做特征与参数实验、搭建自动评估循环。逻辑对应 `claude/fixed/` 下的 Java 立即修复版（含七处 P0 修复），不是原始有 bug 的版本。
 
 只依赖 Python 3.8+ 标准库。
@@ -10,13 +12,13 @@
 | --- | --- | --- |
 | `npv/scorer.py` | `PageValueScore` 的 preProcess* / getSrSprScore / adjustScore* / score | 打分核心，纯函数式，返回 `(score, features)` |
 | `npv/config.py` | 散落在 Java 各处的魔法数字 | `ScoreConfig`：权重、阈值、衰减常数、正文长度规则、pc 位规则表、adc 加分。实验时只换配置不改代码 |
-| `npv/tables.py` | 构造函数里的表加载 | dr 站点表、dr 后缀表、官网表、黑白名单、pr 切分点、sprMax（含 > 0 校验） |
+| `npv/tables.py` | 构造函数里的表加载 | dr 站点表、dr 后缀表、官网表、黑白名单、sprMax（含 > 0 校验） |
 | `npv/timeutil.py` | decayFactor / parseTimestampSeconds / daysBetween | 时间衰减 |
 | `npv/normalization.py` | generateUrlInterval / normalizationScore | 正态分桶排名归一化，`math.erf` 替代 commons-math |
 | `npv/site.py` | 原项目的 `ParseSiteUtil.parseSite`（实现未知） | 默认取 host 小写去端口，**需与原实现对齐** |
 | `npv/io.py` | `getScoreRDD` 里的行解析 | 输入行 -> `ScoreInput`，坏行抛 `BadRow` |
 | `run_npv.py` | `PageValueScoreMain` | 命令行入口，输出格式与 Java 作业一致 |
-| `make_sample.py` | 无 | 生成一套合成样例数据（输入 + 七张表） |
+| `make_sample.py` | 无 | 生成一套合成样例数据（输入 + 六张表） |
 | `compare_with_java.py` | 无 | 在原环境把 Java 输出与 Python 输出按 url 对齐比较 |
 | `tests/test_npv.py` | 无 | 单元测试 + 端到端测试 |
 
@@ -26,7 +28,7 @@
 cd claude/npv_py
 python make_sample.py --out sample --rows 5000
 python run_npv.py --input sample/input.tsv --spr sample/spr.tsv --dr-site sample/dr_site.tsv \
-    --dr-suffix sample/dr_suffix.tsv --ow sample/ow.tsv --pr-split sample/pr_split.tsv \
+    --dr-suffix sample/dr_suffix.tsv --ow sample/ow.tsv \
     --ow-blacklist sample/ow_blacklist.txt --adc-whitelist sample/adc_whitelist.txt \
     --output out --region zh --scroll 1 --now 1757030400
 python -m unittest discover -s tests -v
@@ -46,25 +48,25 @@ from npv import PageValueScore, ScoreInput, ScoreConfig, load_tables
 from npv.config import PcRule, region_site_list
 
 tables = load_tables("sample/spr.tsv", "sample/dr_site.tsv", "sample/dr_suffix.tsv", "sample/ow.tsv",
-                     "sample/pr_split.tsv", "sample/ow_blacklist.txt", "sample/adc_whitelist.txt")
+                     "sample/ow_blacklist.txt", "sample/adc_whitelist.txt")
 
 # 基线
 base = PageValueScore(tables, now_seconds=1757030400)
 
 # 实验：调权重、加一条页面类别规则
 cfg = ScoreConfig(
-    fea_weight={"spr_sr": 50, "pr": 10, "dr": 12, "ow": 8},
+    fea_weight={"spr_sr": 50, "dr": 20, "ow": 8},
     pc_rules=(PcRule("forum", 40, 0.7),) + ScoreConfig().pc_rules,
 )
 exp = PageValueScore(tables, now_seconds=1757030400, config=cfg)
 
-x = ScoreInput(url="https://www.zhihu.com/question/1", pr=2.3, adc=0, pc=0,
+x = ScoreInput(url="https://www.zhihu.com/question/1", adc=0, pc=0,
                pct=1740000000, pt=0, pure_text_len=1200, sr=88, spr=7.0)
 print(base.score(x, region_site_list("zh")))
 print(exp.score(x, region_site_list("zh")))
 ```
 
-`score()` 返回 `ScoreResult(score, features)`，`features` 是有序 dict（sr, spr, spr_sr, dr, ow, pr, adc），可直接落成表做分析。`adjust_pc()` 额外返回命中的规则名，便于统计各规则命中率。
+`score()` 返回 `ScoreResult(score, features)`，`features` 是有序 dict（sr, spr, spr_sr, dr, ow, adc），可直接落成表做分析。`adjust_pc()` 额外返回命中的规则名，便于统计各规则命中率。
 
 要加新特征：在 `scorer.py` 的 `gen_features` 里增加一项，在 `ScoreConfig.fea_weight` 里给权重即可；`basic_score` 会自动按权重表求和。
 

@@ -2,7 +2,7 @@
 """用偏序标签拟合基础分权重，生成一份新的配置文件。
 
   python fit_weights.py --scores runs/baseline/npv_ori.tsv --pairs labels/pairs.tsv \
-      --features spr_sr,pr,dr,ow --base-config configs/baseline.json --out configs/fitted.json
+      --features spr_sr,dr,ow --base-config configs/baseline.json --out configs/fitted.json
 
 --scores 的 fea 列提供每个 url 的特征值，所以要先用 run_lab.py 跑一遍（特征在 features.py 里有即可，不必有权重）。
 """
@@ -20,7 +20,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--scores", required=True)
     p.add_argument("--pairs", required=True)
-    p.add_argument("--features", default="spr_sr,pr,dr,ow")
+    p.add_argument("--features", default="spr_sr,dr,ow")
     p.add_argument("--base-config", default=None)
     p.add_argument("--out", required=True)
     p.add_argument("--total-abs", type=float, default=80.0, help="权重绝对值之和缩放到该值，0 表示不缩放")
@@ -32,13 +32,13 @@ def main(argv=None):
     names = [s.strip() for s in a.features.split(",") if s.strip()]
     scores = read_scores(a.scores, with_features=True)
     diffs, targets = [], []
-    for pr in read_pairs(a.pairs):
-        fa, fb = scores.get(pr["url_a"]), scores.get(pr["url_b"])
+    for pair in read_pairs(a.pairs):
+        fa, fb = scores.get(pair["url_a"]), scores.get(pair["url_b"])
         if not fa or not fb or fa[1] is None or fb[1] is None:
             continue
-        if pr["pref"] == "a":
+        if pair["pref"] == "a":
             t = 1.0
-        elif pr["pref"] == "b":
+        elif pair["pref"] == "b":
             t = 0.0
         elif a.use_ties:
             t = 0.5

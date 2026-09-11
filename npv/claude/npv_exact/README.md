@@ -1,5 +1,7 @@
 # npv_exact：原 Java 的逐行复刻（保留全部缺陷）
 
+> 2026-09-11：离线端不再生产 pr，本文件已删除 pr 逻辑（`--pr-split`、`preProcessPr`、pr 特征与 4 分权重）。除此之外仍与原 Java 一致。
+
 单文件 `npv_exact.py`，无第三方依赖。它对应的是**原始** `PageValueScore.java` / `PageValueScoreMain.java`，不是修复版。用途只有一个：拿真实表和真实输入在本地跑出与原 Spark 作业尽量一致的分数，定位复现差异。
 
 三个 Python 版本的关系：
@@ -16,7 +18,7 @@
 
 ```bash
 python npv_exact.py --input in.tsv --spr spr.tsv --dr-site dr_site.tsv --dr-suffix dr_suffix.tsv \
-    --ow ow.tsv --pr-split pr_split.tsv --ow-blacklist ow_black.txt --adc-whitelist adc_white.txt \
+    --ow ow.tsv --ow-blacklist ow_black.txt --adc-whitelist adc_white.txt \
     --output out --region zh --scroll 0 --tz Asia/Shanghai
 ```
 
@@ -34,7 +36,7 @@ python npv_exact.py --input in.tsv --spr spr.tsv --dr-site dr_site.tsv --dr-suff
 - Java `float` 32 位：特征计算每一步运算后舍入到 float32，与 Java 一致到最后一位（极罕见的双重舍入除外）。
 - `String.split("\t")` 丢弃尾部空列；`Long/Integer/Float.parseXxx` 的接受规则与溢出；fastjson `getString/getLong/getInteger/getDouble` 的取值与异常。
 - `Double.toString`、`Float.toString` 与 fastjson 数字格式（去掉结尾 `.0`）。
-- 特征 JSON 的键序按 Java `HashMap` 迭代顺序（`adc, pr, spr, spr_sr, ow, dr, sr`）。
+- 特征 JSON 的键序按 Java `HashMap` 迭代顺序（`adc, spr, spr_sr, ow, dr, sr`）。
 - 后缀表按 Java `HashMap` 桶顺序迭代取第一个命中；桶内顺序用文件顺序近似。
 - 名单文件保留空行。
 
@@ -46,4 +48,4 @@ python npv_exact.py --input in.tsv --spr spr.tsv --dr-site dr_site.tsv --dr-suff
 python -m unittest test_exact -v
 ```
 
-测试内容是"缺陷确实被保留"：pr 只有两个值、spr 被除两次、缺失时间按 2024-05-22 衰减、未来时间放大、sprMax 为 0 出 NaN、名单空行让所有 url 命中、坏行整体失败、scroll=1 排序失败。
+测试内容是"缺陷确实被保留"：spr 被除两次、缺失时间按 2024-05-22 衰减、未来时间放大、sprMax 为 0 出 NaN、名单空行让所有 url 命中、坏行整体失败、scroll=1 排序失败。

@@ -30,13 +30,13 @@ PY = sys.executable
 
 def sample_tables():
     return load_tables(*(os.path.join(SAMPLE, f) for f in (
-        "spr.tsv", "dr_site.tsv", "dr_suffix.tsv", "ow.tsv", "pr_split.tsv", "ow_blacklist.txt", "adc_whitelist.txt")))
+        "spr.tsv", "dr_site.tsv", "dr_suffix.tsv", "ow.tsv", "ow_blacklist.txt", "adc_whitelist.txt")))
 
 
 def table_args():
     a = []
     for flag, f in (("--spr", "spr.tsv"), ("--dr-site", "dr_site.tsv"), ("--dr-suffix", "dr_suffix.tsv"),
-                    ("--ow", "ow.tsv"), ("--pr-split", "pr_split.tsv"), ("--ow-blacklist", "ow_blacklist.txt"),
+                    ("--ow", "ow.tsv"), ("--ow-blacklist", "ow_blacklist.txt"),
                     ("--adc-whitelist", "adc_whitelist.txt")):
         a += [flag, os.path.join(SAMPLE, f)]
     return a + ["--region", "zh", "--now", str(NOW), "--input", os.path.join(SAMPLE, "input.tsv")]
@@ -66,7 +66,7 @@ class ParityTests(unittest.TestCase):
 
     def test_extra_features_have_zero_weight_by_default(self):
         s = LabScorer(sample_tables(), NOW)
-        f = s.gen_features(ScoreInput("https://a.com/x/y", 1.0, 0, 1 << 26, 0, 0, 500, 50, 1.0), ())
+        f = s.gen_features(ScoreInput("https://a.com/x/y", 0, 1 << 26, 0, 0, 500, 50, 1.0), ())
         self.assertIn("url_depth", f)
         self.assertEqual(f["pc_bit26"], 1.0)
         self.assertEqual(s.basic_score(f), sum(f[k] * w for k, w in ScoreConfig().fea_weight.items()))

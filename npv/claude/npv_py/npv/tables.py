@@ -9,7 +9,6 @@ class Tables:
     dr_suffix: Dict[str, str]
     ow: Dict[str, str]
     spr_max: float
-    pr_split: List[float]
     ow_blacklist: List[str]
     adc_whitelist: List[str]
 
@@ -50,13 +49,12 @@ def spr_max_from_file(path: str) -> float:
 
 
 def load_tables(spr_path: str, dr_site_path: str, dr_suffix_path: str, ow_path: str,
-                pr_split_path: str, ow_blacklist_path: str, adc_whitelist_path: str) -> Tables:
+                ow_blacklist_path: str, adc_whitelist_path: str) -> Tables:
     return Tables(
         dr_site=load_map_tsv(dr_site_path),
         dr_suffix=load_map_tsv(dr_suffix_path),
         ow=load_map_tsv(ow_path),
         spr_max=spr_max_from_file(spr_path),
-        pr_split=load_second_col_floats(pr_split_path),
         ow_blacklist=load_list(ow_blacklist_path),
         adc_whitelist=load_list(adc_whitelist_path),
     )

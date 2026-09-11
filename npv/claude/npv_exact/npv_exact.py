@@ -4,8 +4,9 @@
 目的：拿真实表和真实输入在本地跑，得到与原 Spark 作业尽可能一致的分数，用来定位复现差异。
 不要在这里修 bug、不要加特征；修复版与实验版在 ../npv_py 与 ../npv_lab。
 
+2026-09-11：离线端不再生产 pr，已按用户要求删除全部 pr 逻辑（原 P0-1 随之消失）。
+
 保留的缺陷（与解读报告编号对应）：
-  P0-1 preProcessPr 区间判断恒为假，pr 特征只有 0.01 / 1.0 两个值
   P0-2 spr 先在 preProcessSpr 除以 sprMax，再在 getSrSprScore 里除第二次
   P0-3 isScroll=1 时 sortByKey 用 Tuple2 作键，原作业会抛 ClassCastException（本文件默认同样报错，--assume-sort-works 可跳过）
   P0-4 pct/pt 长度不足 10 时按固定日期 2024-05-22 计算衰减
@@ -20,7 +21,7 @@ Long/Integer/Float.parseXxx 的判定规则、Double/Float.toString 与 fastjson
 
 用法：
   python npv_exact.py --input in.tsv --spr spr.tsv --dr-site dr_site.tsv --dr-suffix dr_suffix.tsv \
-      --ow ow.tsv --pr-split pr_split.tsv --ow-blacklist ow_black.txt --adc-whitelist adc_white.txt \
+      --ow ow.tsv --ow-blacklist ow_black.txt --adc-whitelist adc_white.txt \
       --output out --region zh --scroll 0 [--now 1757030400] [--tz Asia/Shanghai] [--skip-bad-rows]
 输出 out/npv_ori/part-00000（url, npv_ori, npv_fea）与 out/npv/part-00000（url, npv_ori, npv, npv_fea）。
 """
@@ -333,7 +334,7 @@ def load_map_tsv(path):
 
 
 class Tables:
-    def __init__(self, spr_path, dr_site_path, dr_suffix_path, ow_path, pr_split_path,
+    def __init__(self, spr_path, dr_site_path, dr_suffix_path, ow_path,
                  ow_blacklist_path, adc_whitelist_path):
         self.dr_site = load_map_tsv(dr_site_path)
         self.dr_suffix = load_map_tsv(dr_suffix_path)
@@ -344,8 +345,6 @@ class Tables:
         if not spr_list:
             raise JavaJobFailure("NoSuchElementException: Collections.max 于空列表")
         self.spr_max = max(spr_list)  # 可能为 0 或负数，原代码不检查
-        self.pr_split = [java_parse_float(java_split_tab(l)[1]) if len(java_split_tab(l)) > 1
-                         else _oob(pr_split_path, l) for l in _text_file_lines(pr_split_path)]
         self.ow_blacklist = _text_file_lines(ow_blacklist_path)   # 含空行
         self.adc_whitelist = _text_file_lines(adc_whitelist_path)  # 含空行：url.contains("") 恒为 true
 
@@ -358,10 +357,10 @@ def _oob(path, line):
 # 打分（对应 PageValueScore）
 # ----------------------------------------------------------------------------
 
-FEA_WEIGHT = (("spr_sr", 60), ("pr", 4), ("dr", 12), ("ow", 4))  # ImmutableMap 插入顺序
+FEA_WEIGHT = (("spr_sr", 60), ("dr", 12), ("ow", 4))  # ImmutableMap 插入顺序（2026-09-11 起去掉 pr）
 MAX_DR = 3
 ONE_HUNDRED = 1000
-FEATURE_JSON_ORDER = java_hashmap_order(["sr", "spr", "spr_sr", "dr", "ow", "pr", "adc"], capacity=16)
+FEATURE_JSON_ORDER = java_hashmap_order(["sr", "spr", "spr_sr", "dr", "ow", "adc"], capacity=16)
 
 
 class PageValueScoreExact:
@@ -385,16 +384,6 @@ class PageValueScoreExact:
             if w in url:
                 return 3.0
         return float(adc)
-
-    def pre_pr(self, pr):
-        if not self.t.pr_split:
-            raise JavaJobFailure("IndexOutOfBoundsException: prSplit 为空，prSplit.get(0) 失败（pr_split 文件至少要有一行）")
-        if pr < self.t.pr_split[0]:
-            return F("0.01")
-        for idx in range(len(self.t.pr_split) - 1):
-            if pr > self.t.pr_split[idx] and pr <= self.t.pr_split[idx]:  # 原样保留：恒为假
-                return f32(idx / F("100"))
-        return 1.0
 
     def pre_dr(self, url):
         site = parse_site(url)
@@ -436,14 +425,13 @@ class PageValueScoreExact:
             return f32(f32(sr + f32(F("0.25") * spr)) / F("1.1"))
         return F("0.25")
 
-    def gen_feature(self, url, sr, spr, pr, adc, site_list):
+    def gen_feature(self, url, sr, spr, adc, site_list):
         fl = self.feature_list
         fl["sr"] = self.pre_sr(sr)
         fl["spr"] = self.pre_spr(spr)
         fl["spr_sr"] = self.get_sr_spr_score(fl["sr"], fl["spr"], self.t.spr_max)
         fl["dr"] = self.pre_dr(url)
         fl["ow"] = self.pre_ow(url, site_list)
-        fl["pr"] = self.pre_pr(pr)
         fl["adc"] = self.pre_adc(url, adc)
 
     # --- 时间衰减（原样，含 2024-05-22 默认值与负天数） ---
@@ -537,10 +525,10 @@ class PageValueScoreExact:
             score += f32(self.feature_list[fea] * w)  # Float * Integer 在 float 里算，再加到 double
         return score
 
-    def score(self, url, pr, adc, pc, pct, pt, pure_text_len, sr, spr, site_list):
+    def score(self, url, adc, pc, pct, pt, pure_text_len, sr, spr, site_list):
         self.feature_list = {}
         score = 0.0
-        self.gen_feature(url, sr, spr, pr, adc, site_list)
+        self.gen_feature(url, sr, spr, adc, site_list)
         adc_new = self.feature_list["adc"]
         score = self.get_basic_score(score)
         score = self.adjust_score_pct(pct, score)
@@ -612,7 +600,6 @@ def parse_input_line(line):
         raise JavaJobFailure(f"JSONException: 第 5 列不是合法 JSON（{e}）") from e
     if not isinstance(obj, dict):
         raise JavaJobFailure("JSONException: 第 5 列不是 JSON 对象")
-    pr = fastjson_get_string(obj, "pr")
     adc = fastjson_get_string(obj, "adc")
     pc_long = fastjson_get_long(obj, "pcLong")
     pc_long = 0 if pc_long is None else pc_long
@@ -634,11 +621,7 @@ def parse_input_line(line):
         if not isinstance(adc_obj, dict):
             raise JavaJobFailure("JSONException: adc 不是 JSON 对象")
         level = fastjson_get_string(adc_obj, "level")
-    if pr is None:
-        raise JavaJobFailure("NullPointerException: pr 为 null 时调用 isEmpty()")
-    if pr == "":
-        pr = "0"
-    return dict(url=url, flag=s_line[2], pr=java_parse_double(pr), level=java_parse_int(level),
+    return dict(url=url, flag=s_line[2], level=java_parse_int(level),
                 pc=pc_long, pct=str(pct), pt=str(pt), pure_text_len=pure_text_len, sr=sr, spr=spr)
 
 
@@ -652,7 +635,7 @@ def run(args):
     if args.tz:
         os.environ["TZ"] = args.tz
         time.tzset()
-    tables = Tables(args.spr, args.dr_site, args.dr_suffix, args.ow, args.pr_split,
+    tables = Tables(args.spr, args.dr_site, args.dr_suffix, args.ow,
                     args.ow_blacklist, args.adc_whitelist)
     scorer = PageValueScoreExact(tables, args.now)
     site_list = region_site_list(args.region)
@@ -666,7 +649,7 @@ def run(args):
             line = line.rstrip("\r\n")
             try:
                 r = parse_input_line(line)
-                score = scorer.score(r["url"], r["pr"], r["level"], r["pc"], r["pct"], r["pt"],
+                score = scorer.score(r["url"], r["level"], r["pc"], r["pct"], r["pt"],
                                      r["pure_text_len"], r["sr"], r["spr"], site_list)
             except JavaJobFailure as e:
                 if args.skip_bad_rows:
@@ -700,7 +683,6 @@ def build_parser():
     p.add_argument("--dr-site", required=True)
     p.add_argument("--dr-suffix", required=True)
     p.add_argument("--ow", required=True)
-    p.add_argument("--pr-split", required=True)
     p.add_argument("--ow-blacklist", required=True)
     p.add_argument("--adc-whitelist", required=True)
     p.add_argument("--output", required=True)

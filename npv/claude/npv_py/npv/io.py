@@ -30,9 +30,6 @@ def parse_line(line: str) -> Tuple[ScoreInput, str]:
         if not isinstance(obj, dict):
             raise BadRow("col5 is not a JSON object")
 
-        pr = obj.get("pr")
-        pr = "0" if pr is None or pr == "" else str(pr)
-
         adc = obj.get("adc")
         level = "0"
         if adc is not None and adc != "":
@@ -45,7 +42,6 @@ def parse_line(line: str) -> Tuple[ScoreInput, str]:
 
         x = ScoreInput(
             url=url,
-            pr=float(pr),
             adc=int(level),
             pc=_get_long(obj, "pcLong"),
             pct=_get_long(obj, "pct"),

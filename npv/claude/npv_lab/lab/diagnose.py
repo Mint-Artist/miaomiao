@@ -47,8 +47,6 @@ def diagnose(scorer: PageValueScore, rows: Iterable[Tuple[ScoreInput, str]],
             missing["pct_missing"] += 1
         if parse_timestamp_seconds(x.pt) < 0:
             missing["pt_missing"] += 1
-        if x.pr <= 0:
-            missing["pr<=0"] += 1
         if x.adc > 0:
             missing["adc>0"] += 1
         if e.features.get("dr") == 1.0 / scorer.cfg.max_dr and site not in scorer.t.dr_site:

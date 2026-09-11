@@ -1,5 +1,7 @@
 # npv_lab：在冻结基线之上做诊断、解释、评估与实验
 
+> 2026-09-11：pr 特征已随离线端停产而删除，`--pr-split` 参数不再存在。
+
 `../npv_py/` 是策略的忠实复刻，**冻结不动**，作为一切实验的对照。本目录的代码都通过路径引用它，本身不修改它。
 
 只依赖 Python 3.8+ 标准库。
@@ -8,7 +10,7 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `lab/features.py` | **实验特征**。自改进循环中 agent 只允许改这个文件与 `configs/*.json`。前 7 个特征与基线一致；后面的实验特征默认权重 0 |
+| `lab/features.py` | **实验特征**。自改进循环中 agent 只允许改这个文件与 `configs/*.json`。前 6 个特征与基线一致；后面的实验特征默认权重 0 |
 | `lab/scorer.py` | `LabScorer`：继承基线打分器，只替换特征生成；`fea_weight` 里没有的特征自动权重 0 |
 | `lab/config_io.py` | `ScoreConfig` 与 JSON 互转 |
 | `lab/explain.py` | 把一条记录的分数分解成每一步：各特征加权贡献、衰减系数、页面类别规则、正文长度、adc 加分 |
@@ -43,7 +45,7 @@ labels/grades.tsv   url    grade(0-4)             [group]
 cd claude/npv_lab
 S=../npv_py/sample
 T=(--spr $S/spr.tsv --dr-site $S/dr_site.tsv --dr-suffix $S/dr_suffix.tsv --ow $S/ow.tsv \
-   --pr-split $S/pr_split.tsv --ow-blacklist $S/ow_blacklist.txt --adc-whitelist $S/adc_whitelist.txt \
+   --ow-blacklist $S/ow_blacklist.txt --adc-whitelist $S/adc_whitelist.txt \
    --region zh --now 1757030400)
 
 python run_lab.py --input $S/input.tsv $T --output runs/baseline --config configs/baseline.json
@@ -52,7 +54,7 @@ python eval_scores.py --scores runs/baseline/npv_ori.tsv --pairs labels/pairs.ts
 python diagnose_data.py --input $S/input.tsv $T --out runs/diagnose_baseline.md
 python explain_url.py --input $S/input.tsv $T --grep "tieba.baidu.com/u/" --limit 1
 python fit_weights.py --scores runs/baseline/npv_ori.tsv --pairs labels/pairs.tsv \
-    --features spr_sr,pr,dr,ow,pc_bit26,url_depth --base-config configs/baseline.json --out configs/fitted_demo.json
+    --features spr_sr,dr,ow,pc_bit26,url_depth --base-config configs/baseline.json --out configs/fitted_demo.json
 python experiment.py --name fitted_demo --config configs/fitted_demo.json --note "偏序拟合" \
     --input $S/input.tsv $T --pairs labels/pairs.tsv --grades labels/grades.tsv --baseline runs/baseline/npv_ori.tsv
 python -m unittest discover -s tests -v
@@ -77,7 +79,7 @@ zsh 下数组变量 `$T` 会自动展开为多个参数；bash 下请写成 `"${
 - **各特征方差占比**：某特征占比接近 0，说明它的权重再怎么调也测不出差别。
 - **规则命中率**：命中数只有个位数的规则，改它的系数没有统计意义。
 
-合成样例上的结果（仅示意格式，不代表真实分布）：站点级占最终分方差 62%、基础分方差 86%；spr_sr 一项占基础分方差 82%，pr、dr、ow 合计不到 3%。
+合成样例上的结果（仅示意格式，不代表真实分布）：站点级占最终分方差 62%、基础分方差 86%；spr_sr 一项占基础分方差八成以上，dr、ow 合计只有几个百分点。
 
 ## `fit_weights.py` 的局限
 
