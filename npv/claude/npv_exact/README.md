@@ -25,6 +25,7 @@ python npv_exact.py --input in.tsv --spr spr.tsv --dr-site dr_site.tsv --dr-suff
 - `--tz`：集群的默认时区。时间衰减按日历日计算，时区错一格可能差一天。
 - `--now`：固定"当前时间"（秒）。不传则和原作业一样每条记录各取一次当前时间；对齐线上输出时传作业运行当天的时间戳即可。
 - `--skip-bad-rows`：原作业遇到任一坏行整体失败，本脚本默认同样退出并打印是第几行、Java 会抛什么异常；加此参数改为跳过并计数。
+- `--level-map level_map.tsv`：**非原作业功能**。用 `../npv_py/fit_level_map.py` 从线上样本拟合的阈值表定级，得到与线上可比的 npv；隐含 `--scroll 1`，不再需要 `--assume-sort-works`。`--all-rows` 忽略第 2 列让全部行进入 npv 输出。不传这两个参数时行为与原作业一致。
 - `--assume-sort-works`：`--scroll 1` 时原作业会在 `sortByKey` 处抛 ClassCastException，本脚本默认同样报错；若线上确认能跑通，加此参数按"分数降序、并列按 url+特征字符串降序"排序。
 
 输出与 Spark 一致：`out/npv_ori/part-00000`（url、npv_ori、npv_fea），`out/npv/part-00000`（url、npv_ori、npv、npv_fea）。可直接用 `../npv_py/compare_with_java.py --java <线上输出目录> --py out/npv_ori/part-00000` 对齐。

@@ -10,6 +10,9 @@
 输出：
   {output}/npv_ori.tsv   url, npv_ori, npv_fea          （scroll=1 时只含非高质量网页）
   {output}/npv.tsv       url, npv_ori, npv, npv_fea     （scroll=1 时的高质量网页）
+
+--level-map level_map.tsv：不按样本内名次归一化，而是用 fit_level_map.py 从线上样本拟合的阈值表定级，
+  得到与线上可比的 npv（隐含 --scroll 1）。--all-rows：忽略第 2 列，全部行进入 npv 输出。
 """
 import argparse
 import os
@@ -18,6 +21,7 @@ import time
 from collections import Counter
 
 from npv import PageValueScore, assign_levels, load_tables
+from npv.level_map import LevelMap
 from npv.config import ScoreConfig, region_site_list
 from npv.io import BadRow, features_json, format_row, parse_line
 
@@ -37,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--region", default="", help="'zh' 使用中文区官网白名单")
     p.add_argument("--scroll", type=int, default=0, help="1 = 拆分高质量网页并做排名归一化")
     p.add_argument("--now", type=int, default=None, help="时间衰减基准（秒级时间戳），缺省取当前时间")
+    p.add_argument("--level-map", default=None, help="fit_level_map.py 生成的阈值表；给出时按表定级而非样本内排名")
+    p.add_argument("--all-rows", action="store_true", help="忽略第 2 列，全部行进入 npv 输出")
     return p
 
 
@@ -49,7 +55,10 @@ def run(args, config: ScoreConfig = None) -> dict:
     os.makedirs(args.output, exist_ok=True)
 
     stats = Counter()
-    hqw_rows = []  # scroll=1 时的高质量网页，需全部读入后排序
+    level_map = LevelMap.load(args.level_map) if getattr(args, "level_map", None) else None
+    do_norm = args.scroll == 1 or level_map is not None
+    all_rows = getattr(args, "all_rows", False)
+    hqw_rows = []  # 需要定级的行
     ori_path = os.path.join(args.output, "npv_ori.tsv")
     with open(args.input, encoding="utf-8") as fin, open(ori_path, "w", encoding="utf-8") as fout:
         for line in fin:
@@ -63,16 +72,20 @@ def run(args, config: ScoreConfig = None) -> dict:
             stats["rows"] += 1
             r = scorer.score(x, site_list)
             fea = features_json(r.features)
-            if args.scroll == 1 and flag in HQW_FLAGS:
+            if do_norm and (all_rows or flag in HQW_FLAGS):
                 hqw_rows.append((x.url, r.score, fea))
             else:
                 fout.write(format_row(x.url, r.score, fea) + "\n")
                 stats["npv_ori_rows"] += 1
 
-    if args.scroll == 1:
-        c = config or ScoreConfig()
-        ranked = assign_levels(hqw_rows, score_of=lambda t: t[1], tie_key=lambda t: t[0],
-                               z_start=c.norm_z_start, z_end=c.norm_z_end, buckets=c.norm_buckets)
+    if do_norm:
+        if level_map is not None:
+            ranked = [(t, None, level_map.lookup(t[1])) for t in hqw_rows]
+            stats["level_map"] = args.level_map
+        else:
+            c = config or ScoreConfig()
+            ranked = assign_levels(hqw_rows, score_of=lambda t: t[1], tie_key=lambda t: t[0],
+                                   z_start=c.norm_z_start, z_end=c.norm_z_end, buckets=c.norm_buckets)
         npv_path = os.path.join(args.output, "npv.tsv")
         with open(npv_path, "w", encoding="utf-8") as fout:
             for (url, score, fea), _rank, level in ranked:

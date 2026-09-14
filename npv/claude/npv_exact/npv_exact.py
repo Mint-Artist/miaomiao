@@ -16,6 +16,9 @@
   另：pt 只有 length>5 才衰减；每条记录各自取"当前时间"；名单文件里的空行原样参与匹配；
       后缀表按 Java HashMap 迭代顺序取第一个命中；特征 JSON 按 Java HashMap 顺序输出。
 
+非原作业功能（明确标注的附加项）：--level-map 用线上样本拟合的阈值表定级（见 ../npv_py/fit_level_map.py），
+  --all-rows 忽略第 2 列让全部行进入 npv 输出。不传这两个参数时行为与原作业一致。
+
 额外模拟的 Java 语义：float 为 32 位（每步运算后舍入）、String.split 丢弃尾部空列、
 Long/Integer/Float.parseXxx 的判定规则、Double/Float.toString 与 fastjson 的数字格式、按日历日计算天数。
 
@@ -566,6 +569,29 @@ def generate_url_interval(start, end, url_num):
     return intervals
 
 
+def load_level_map(path):
+    """读取 fit_level_map.py 生成的阈值表（level \\t min_score），返回按等级排列的阈值列表。"""
+    rows = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            a, b = line.split("\t")[:2]
+            if a == "level":
+                continue
+            rows[int(a)] = float(b)
+    if not rows or sorted(rows) != list(range(1, max(rows) + 1)):
+        raise JavaJobFailure(f"阈值表等级不连续或为空: {path}")
+    return [rows[i] for i in range(1, max(rows) + 1)]
+
+
+def level_by_map(score, thresholds):
+    if score != score:
+        return 1
+    return max(1, bisect.bisect_right(thresholds, score))
+
+
 def normalization_score(rows, assume_sort_works):
     """rows: [(url, score, fea)]。返回 [(url, score, level, fea)]。"""
     if len(rows) >= 2 and not assume_sort_works:
@@ -640,6 +666,8 @@ def run(args):
     scorer = PageValueScoreExact(tables, args.now)
     site_list = region_site_list(args.region)
     hqw = {"1", "2", "5"}
+    thresholds = load_level_map(args.level_map) if args.level_map else None
+    do_norm = args.scroll == 1 or thresholds is not None
     os.makedirs(os.path.join(args.output, "npv_ori"), exist_ok=True)
     stats = {"rows": 0, "bad_rows": 0, "npv_ori_rows": 0, "npv_rows": 0}
     hqw_rows = []
@@ -658,15 +686,19 @@ def run(args):
                 raise JavaJobFailure(f"第 {lineno} 行导致作业失败：{e}\n行内容：{line[:300]}") from None
             stats["rows"] += 1
             fea = scorer.feature_json()
-            if args.scroll == 1 and r["flag"] in hqw:
+            if do_norm and (args.all_rows or r["flag"] in hqw):
                 hqw_rows.append((r["url"], score, fea))
             else:
                 fout.write(f"{r['url']}\t{java_double_to_string(score)}\t{fea}\n")
                 stats["npv_ori_rows"] += 1
-    if args.scroll == 1:
+    if do_norm:
         os.makedirs(os.path.join(args.output, "npv"), exist_ok=True)
+        if thresholds is not None:
+            leveled = [(u, s, level_by_map(s, thresholds), f) for u, s, f in hqw_rows]
+        else:
+            leveled = normalization_score(hqw_rows, args.assume_sort_works)
         with open(os.path.join(args.output, "npv", "part-00000"), "w", encoding="utf-8") as fout:
-            for url, score, level, fea in normalization_score(hqw_rows, args.assume_sort_works):
+            for url, score, level, fea in leveled:
                 fout.write(f"{url}\t{java_double_to_string(score)}\t{level}\t{fea}\n")
                 stats["npv_rows"] += 1
     stats["spr_max"] = tables.spr_max
@@ -694,6 +726,9 @@ def build_parser():
     p.add_argument("--skip-bad-rows", action="store_true", help="坏行跳过并计数（原作业会整体失败）")
     p.add_argument("--assume-sort-works", action="store_true",
                    help="isScroll=1 时假设 sortByKey 能执行（原作业会 ClassCastException）")
+    p.add_argument("--level-map", default=None,
+                   help="[非原作业功能] 用 fit_level_map.py 拟合的阈值表定级，得到与线上可比的 npv；隐含 --scroll 1")
+    p.add_argument("--all-rows", action="store_true", help="[非原作业功能] 忽略第 2 列，全部行进入 npv 输出")
     return p
 
 

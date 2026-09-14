@@ -18,7 +18,7 @@
 | `lab/evaluate.py` | 离线评估：偏序一致率（总体、按分差桶、按分组）、Spearman、误压率、误抬率、校准曲线、硬约束、配对符号检验 |
 | `lab/fit.py` | 用偏序标签拟合基础分权重（pairwise 逻辑回归，纯 Python） |
 | `lab/stats.py` | 分位数、方差分解、Spearman、符号检验 |
-| `run_lab.py` | 用实验特征与配置打分，输出与 `run_npv.py` 同格式 |
+| `run_lab.py` | 用实验特征与配置打分，输出与 `run_npv.py` 同格式；支持 `--level-map`、`--all-rows`（见 npv_py README） |
 | `explain_url.py` | 解释某几条 url 的分数 |
 | `diagnose_data.py` | 输出诊断报告（Markdown / JSON） |
 | `eval_scores.py` | 评估一份打分输出，可与对照做配对比较 |

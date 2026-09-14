@@ -261,3 +261,74 @@ class EndToEndTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LevelMapTests(unittest.TestCase):
+    def _population(self, n=200000, seed=3):
+        import random
+        rnd = random.Random(seed)
+        pop = [(i, rnd.lognormvariate(3, 0.6)) for i in range(n)]
+        ranked = assign_levels(pop, score_of=lambda t: t[1], tie_key=lambda t: t[0])
+        return [(it[1], lv) for it, _, lv in ranked]
+
+    def test_fit_and_holdout(self):
+        import random
+        from npv.level_map import fit_observed, fit_quantile, validate
+        truth = self._population()
+        rnd = random.Random(1)
+        sample, holdout = rnd.sample(truth, 30000), rnd.sample(truth, 10000)
+        lq = fit_quantile([s for s, _ in sample])
+        lo = fit_observed([s for s, _ in sample], [lv for _, lv in sample])
+        vq = validate(lq, [s for s, _ in holdout], [lv for _, lv in holdout])
+        vo = validate(lo, [s for s, _ in holdout], [lv for _, lv in holdout])
+        self.assertLess(vq["mean_abs_diff"], 3)
+        self.assertGreater(vo["exact_match"], 0.9)
+        self.assertEqual(vo["within_20"], 1.0)
+
+    def test_save_load_lookup(self):
+        from npv.level_map import LevelMap
+        lm = LevelMap([1.0, 2.0, 2.0, 5.0], {"method": "x"})
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "lm.tsv")
+            lm.save(p)
+            lm2 = LevelMap.load(p)
+        self.assertEqual(lm2.thresholds, lm.thresholds)
+        self.assertEqual(lm2.meta["method"], "x")
+        self.assertEqual([lm2.lookup(s) for s in (0.5, 1.0, 1.5, 2.0, 4.9, 5.0, 99, float("nan"))],
+                         [1, 1, 1, 3, 3, 4, 4, 1])
+        with self.assertRaises(ValueError):
+            LevelMap([2.0, 1.0])
+
+    def test_quantile_needs_enough_rows(self):
+        from npv.level_map import fit_quantile
+        with self.assertRaises(ValueError):
+            fit_quantile([1.0, 2.0], buckets=1000)
+
+    def test_cli_end_to_end(self):
+        import random
+        truth = self._population(n=60000)
+        with tempfile.TemporaryDirectory() as d:
+            sample_path = os.path.join(d, "online.tsv")
+            with open(sample_path, "w") as f:
+                for i, (s, lv) in enumerate(random.Random(2).sample(truth, 20000)):
+                    f.write(f"u{i}\t{s!r}\t{lv}\t{{}}\n")
+            r = subprocess.run([sys.executable, os.path.join(ROOT, "fit_level_map.py"), "--sample", sample_path,
+                                "--out", os.path.join(d, "lm.tsv")], check=True, capture_output=True, text=True)
+            self.assertIn("method=observed", r.stderr)
+            self.assertIn("回代校验", r.stderr)
+            # run_npv --level-map --all-rows：全部行进入 npv，等级来自阈值表
+            sample, out = os.path.join(d, "sample"), os.path.join(d, "out")
+            subprocess.run([sys.executable, os.path.join(ROOT, "make_sample.py"), "--out", sample, "--rows", "500"],
+                           check=True, capture_output=True)
+            args = ["--input", f"{sample}/input.tsv", "--spr", f"{sample}/spr.tsv",
+                    "--dr-site", f"{sample}/dr_site.tsv", "--dr-suffix", f"{sample}/dr_suffix.tsv",
+                    "--ow", f"{sample}/ow.tsv", "--ow-blacklist", f"{sample}/ow_blacklist.txt",
+                    "--adc-whitelist", f"{sample}/adc_whitelist.txt", "--output", out, "--now", str(NOW),
+                    "--level-map", os.path.join(d, "lm.tsv"), "--all-rows"]
+            r = subprocess.run([sys.executable, os.path.join(ROOT, "run_npv.py")] + args,
+                               check=True, capture_output=True, text=True)
+            stats = dict(l.split("\t") for l in r.stderr.strip().splitlines())
+            self.assertEqual(stats["npv_rows"], stats["rows"])
+            self.assertEqual(int(stats.get("npv_ori_rows", 0)), 0)
+            levels = [int(l.split("\t")[2]) for l in open(f"{out}/npv.tsv").read().splitlines()]
+            self.assertTrue(all(1 <= lv <= 1000 for lv in levels))

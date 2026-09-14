@@ -17,7 +17,8 @@
 | `npv/normalization.py` | generateUrlInterval / normalizationScore | 正态分桶排名归一化，`math.erf` 替代 commons-math |
 | `npv/site.py` | 原项目的 `ParseSiteUtil.parseSite`（实现未知） | 默认取 host 小写去端口，**需与原实现对齐** |
 | `npv/io.py` | `getScoreRDD` 里的行解析 | 输入行 -> `ScoreInput`，坏行抛 `BadRow` |
-| `run_npv.py` | `PageValueScoreMain` | 命令行入口，输出格式与 Java 作业一致 |
+| `run_npv.py` | `PageValueScoreMain` | 命令行入口，输出格式与 Java 作业一致；`--level-map` 按阈值表定级、`--all-rows` 全部行进入 npv |
+| `npv/level_map.py`、`fit_level_map.py` | 无 | 从线上均匀抽样的 (npv_ori, npv) 拟合“分数到等级”阈值表，让样本数据算出与线上可比的 npv |
 | `make_sample.py` | 无 | 生成一套合成样例数据（输入 + 六张表） |
 | `compare_with_java.py` | 无 | 在原环境把 Java 输出与 Python 输出按 url 对齐比较 |
 | `tests/test_npv.py` | 无 | 单元测试 + 端到端测试 |
@@ -40,6 +41,25 @@ python -m unittest discover -s tests -v
 
 - `out/npv_ori.tsv`：`url \t npv_ori \t npv_fea`，`--scroll 1` 时只含非高质量网页（第 2 列不在 {1,2,5}）
 - `out/npv.tsv`：`url \t npv_ori \t npv \t npv_fea`，高质量网页的排名归一化等级 1~1000
+
+## 得到与线上可比的 npv（`--level-map`）
+
+线上 npv 是按名次映射的，样本内排名得到的等级与线上不可比。做法：从线上对参与归一化的页面（第 2 列为 1、2、5）**均匀随机**抽几万条，拿到它们的 npv_ori 与 npv（同一次作业），拟合阈值表：
+
+```bash
+python fit_level_map.py --sample online_sample.tsv --out level_map.tsv        # 样本含 npv 列（url, npv_ori, npv, ...）
+python fit_level_map.py --sample online_sample.tsv --level-col -1 --out level_map.tsv   # 样本只有 npv_ori
+```
+
+有 npv 列时用 observed 方法（每个等级取观测最低分，缺的等级用分位法补），脚本会回代校验并打印与 quantile 方法的对照；只有分数时用 quantile 方法（按理论桶质量取经验分位）。合成总体上留出集的结果：quantile 平均差 0.85 级，observed 98% 完全一致。5 万条样本足够，900 以上的等级样本稀少，误差会大一些。
+
+然后打分时传表：
+
+```bash
+python run_npv.py ... --level-map level_map.tsv [--all-rows]
+```
+
+`--level-map` 隐含 `--scroll 1`；`--all-rows` 忽略第 2 列让全部行进入 npv 输出。npv_lab 的 `run_lab.py` 与 npv_exact 的 `npv_exact.py` 参数相同。
 
 ## 在代码里做实验
 

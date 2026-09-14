@@ -155,3 +155,29 @@ class EndToEnd(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LevelMapOption(unittest.TestCase):
+    def test_level_map_and_all_rows(self):
+        args = ["--input", os.path.join(SAMPLE, "input.tsv")]
+        for flag, f in (("--spr", "spr.tsv"), ("--dr-site", "dr_site.tsv"), ("--dr-suffix", "dr_suffix.tsv"),
+                        ("--ow", "ow.tsv"), ("--ow-blacklist", "ow_blacklist.txt"),
+                        ("--adc-whitelist", "adc_whitelist.txt")):
+            args += [flag, os.path.join(SAMPLE, f)]
+        args += ["--region", "zh", "--now", str(NOW), "--skip-bad-rows"]
+        with tempfile.TemporaryDirectory() as d:
+            lm = os.path.join(d, "lm.tsv")
+            with open(lm, "w") as f:
+                f.write("# method: test\nlevel\tmin_score\n")
+                for i in range(1, 1001):
+                    f.write(f"{i}\t{i * 0.1}\n")  # 等级 L 的最低分 0.1*L
+            r = subprocess.run([sys.executable, os.path.join(HERE, "npv_exact.py")] + args +
+                               ["--output", d, "--level-map", lm, "--all-rows"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rows = [l.split("\t") for l in open(os.path.join(d, "npv", "part-00000")).read().splitlines()]
+            stats = dict(l.split("\t") for l in r.stderr.strip().splitlines())
+            self.assertEqual(len(rows), int(stats["rows"]))  # --all-rows：全部行进入 npv
+            for _u, s, lv, _f in rows[:200]:
+                self.assertEqual(int(lv), max(1, min(1000, int(float(s) / 0.1 + 1e-9))))
+            self.assertEqual(os.path.getsize(os.path.join(d, "npv_ori", "part-00000")), 0)
+            self.assertEqual(e.level_by_map(float("nan"), [0.1 * i for i in range(1, 1001)]), 1)

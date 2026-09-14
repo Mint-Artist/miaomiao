@@ -11,6 +11,7 @@ from collections import Counter
 import lab  # noqa: F401  (加入 npv_py 路径)
 from lab.cli_common import add_table_args, build_scorer
 from npv import assign_levels
+from npv.level_map import LevelMap
 from npv.io import BadRow, features_json, format_row, parse_line
 
 HQW_FLAGS = {"1", "2", "5"}
@@ -21,7 +22,11 @@ def main(argv=None):
     add_table_args(p)
     p.add_argument("--output", required=True)
     p.add_argument("--scroll", type=int, default=0)
+    p.add_argument("--level-map", default=None, help="npv_py/fit_level_map.py 生成的阈值表；给出时按表定级")
+    p.add_argument("--all-rows", action="store_true", help="忽略第 2 列，全部行进入 npv 输出")
     a = p.parse_args(argv)
+    level_map = LevelMap.load(a.level_map) if a.level_map else None
+    do_norm = a.scroll == 1 or level_map is not None
     scorer, site_list = build_scorer(a)
     os.makedirs(a.output, exist_ok=True)
     stats = Counter()
@@ -43,14 +48,17 @@ def main(argv=None):
                 checked = True
             stats["rows"] += 1
             fea = features_json(r.features)
-            if a.scroll == 1 and flag in HQW_FLAGS:
+            if do_norm and (a.all_rows or flag in HQW_FLAGS):
                 hqw.append((x.url, r.score, fea))
             else:
                 fout.write(format_row(x.url, r.score, fea) + "\n")
-    if a.scroll == 1:
-        c = scorer.cfg
-        ranked = assign_levels(hqw, score_of=lambda t: t[1], tie_key=lambda t: t[0],
-                               z_start=c.norm_z_start, z_end=c.norm_z_end, buckets=c.norm_buckets)
+    if do_norm:
+        if level_map is not None:
+            ranked = [(t, None, level_map.lookup(t[1])) for t in hqw]
+        else:
+            c = scorer.cfg
+            ranked = assign_levels(hqw, score_of=lambda t: t[1], tie_key=lambda t: t[0],
+                                   z_start=c.norm_z_start, z_end=c.norm_z_end, buckets=c.norm_buckets)
         with open(os.path.join(a.output, "npv.tsv"), "w", encoding="utf-8") as fout:
             for (url, score, fea), _rank, level in ranked:
                 fout.write(format_row(url, score, fea, level) + "\n")
