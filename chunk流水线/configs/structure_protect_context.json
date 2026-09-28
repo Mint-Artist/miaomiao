@@ -1,0 +1,9 @@
+{
+  "target_chars": 256,
+  "boundary_strategy": "structure",
+  "budget_policy": "protect",
+  "absolute_chars": null,
+  "context_mode": "structure",
+  "title_policy": "ancestors",
+  "max_title_chars": 100
+}

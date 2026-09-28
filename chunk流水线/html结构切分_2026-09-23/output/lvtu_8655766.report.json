@@ -1,0 +1,88 @@
+{
+  "chunker_version": "0.1.0",
+  "doc_id": "lvtu_8655766",
+  "url": "https://www.64365.com/zs/8655766.aspx",
+  "config": {
+    "budget": 256,
+    "hard_budget": true,
+    "merge_short_sections": false,
+    "pseudo_heading_boundary": true,
+    "context_title_path": true,
+    "context_table_header": true,
+    "context_metadata": false,
+    "llm_context": false,
+    "counter": "char",
+    "max_context_ratio": 0.4
+  },
+  "config_hash": "a02b66bedf7f",
+  "stats": {
+    "atoms": 13,
+    "avg_chars": 179.7,
+    "chunks": 6,
+    "continued_chunks": 0,
+    "coverage_ok": true,
+    "cross_section_chunks": 0,
+    "expanded_atoms": 13,
+    "kind_counts": {
+      "p": 6
+    },
+    "order_ok": true,
+    "over_budget": 0
+  },
+  "chunks": [
+    {
+      "chunk_id": "lvtu_8655766-C01",
+      "kind": "p",
+      "chars": 141,
+      "contextual_chars": 154,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    },
+    {
+      "chunk_id": "lvtu_8655766-C02",
+      "kind": "p",
+      "chars": 221,
+      "contextual_chars": 234,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    },
+    {
+      "chunk_id": "lvtu_8655766-C03",
+      "kind": "p",
+      "chars": 33,
+      "contextual_chars": 46,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    },
+    {
+      "chunk_id": "lvtu_8655766-C04",
+      "kind": "p",
+      "chars": 227,
+      "contextual_chars": 240,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    },
+    {
+      "chunk_id": "lvtu_8655766-C05",
+      "kind": "p",
+      "chars": 229,
+      "contextual_chars": 242,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    },
+    {
+      "chunk_id": "lvtu_8655766-C06",
+      "kind": "p",
+      "chars": 227,
+      "contextual_chars": 240,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    }
+  ]
+}

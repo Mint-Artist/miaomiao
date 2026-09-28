@@ -1,0 +1,63 @@
+{
+  "chunker_version": "0.1.0",
+  "doc_id": "huawei_zh-cn16079039",
+  "url": "https://consumer.huawei.com/cn/support/content/zh-cn16079039/",
+  "config": {
+    "budget": 256,
+    "hard_budget": true,
+    "merge_short_sections": false,
+    "pseudo_heading_boundary": true,
+    "context_title_path": true,
+    "context_table_header": true,
+    "context_metadata": false,
+    "llm_context": false,
+    "counter": "char",
+    "max_context_ratio": 0.4
+  },
+  "config_hash": "a02b66bedf7f",
+  "stats": {
+    "atoms": 6,
+    "avg_chars": 178.7,
+    "chunks": 3,
+    "continued_chunks": 0,
+    "coverage_ok": true,
+    "cross_section_chunks": 0,
+    "expanded_atoms": 6,
+    "kind_counts": {
+      "p": 1,
+      "note": 1,
+      "li": 1
+    },
+    "order_ok": true,
+    "over_budget": 0
+  },
+  "chunks": [
+    {
+      "chunk_id": "huawei_zh-cn16079039-C01",
+      "kind": "p",
+      "chars": 148,
+      "contextual_chars": 163,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    },
+    {
+      "chunk_id": "huawei_zh-cn16079039-C02",
+      "kind": "note",
+      "chars": 162,
+      "contextual_chars": 177,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    },
+    {
+      "chunk_id": "huawei_zh-cn16079039-C03",
+      "kind": "li",
+      "chars": 226,
+      "contextual_chars": 241,
+      "continued": false,
+      "split_reason": null,
+      "cross_section": false
+    }
+  ]
+}

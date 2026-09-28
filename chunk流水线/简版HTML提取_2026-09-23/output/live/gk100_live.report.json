@@ -1,0 +1,42 @@
+{
+  "extractor_version": "0.1.0",
+  "url": "https://m.gk100.com/read_27177662.htm",
+  "profile": "gk100",
+  "content_selector": ".article article",
+  "title_selector": ".article-title",
+  "title": "安徽2026高考一分一段表！附位次排名对应大学",
+  "text_chars": 3823,
+  "tag_counts": {
+    "br": 35,
+    "div": 1,
+    "h1": 1,
+    "h3": 2,
+    "img": 3,
+    "p": 16,
+    "strong": 5,
+    "table": 1,
+    "tbody": 1,
+    "td": 684,
+    "th": 4,
+    "thead": 1,
+    "tr": 172
+  },
+  "tables": [
+    {
+      "rows": 172,
+      "header_rows": 1,
+      "col_widths": [
+        4
+      ]
+    }
+  ],
+  "stats": {
+    "dropped:style": 2,
+    "pruned_empty": 2
+  },
+  "warnings": [
+    "img 缺 alt: https://p1.gk100.com/article/20250510/bd07015a99f83db1.jpg",
+    "img 缺 alt: https://p1.gk100.com/article/20260625/d528e0224cac6b02.png",
+    "img 缺 alt: https://p1.gk100.com/article/20260625/ca824163bbbb1e4f.png"
+  ]
+}

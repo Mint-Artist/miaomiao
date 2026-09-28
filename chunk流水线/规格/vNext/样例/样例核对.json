@@ -1,0 +1,53 @@
+[
+  {
+    "doc_id": "huawei_zh-cn16079039",
+    "status": "specification_fixture_not_vnext_chunker_output",
+    "normalizer_spec_version": "vnext-draft-1",
+    "source": "../../../html结构切分_2026-09-23/output/huawei_zh-cn16079039.simplified.html",
+    "source_sha256": "f96b960309c4db44a4ceaf75abfa0ad6f7ba53ad4a5b59301c5777861e6274ff",
+    "normalized_file": "huawei_zh-cn16079039.normalized.txt",
+    "normalized_sha256": "1674327194be56f7930748732a9c02b3a20bffa57d460ccaee230dc161eb40dd",
+    "normalized_chars": 694,
+    "normalized_lines": 14,
+    "source_nonwhitespace_chars": 646,
+    "fixture_nonwhitespace_chars": 646,
+    "nonwhitespace_content_matches_source": true,
+    "table_body_rows": 0,
+    "legacy_chunks": 3,
+    "legacy_config_hash": "a02b66bedf7f"
+  },
+  {
+    "doc_id": "gk100_read_27177662",
+    "status": "specification_fixture_not_vnext_chunker_output",
+    "normalizer_spec_version": "vnext-draft-1",
+    "source": "../../../html结构切分_2026-09-23/output/gk100_read_27177662.simplified.html",
+    "source_sha256": "bd9363e7ccbe370acaf3e70a80575dfea30789591a58e62e83a2078b3fb7cfe2",
+    "normalized_file": "gk100_read_27177662.normalized.txt",
+    "normalized_sha256": "d4654072dda69a1f4c03308fa1424d2d1c5f1c01e0ea1ff859d60587912110fb",
+    "normalized_chars": 4561,
+    "normalized_lines": 222,
+    "source_nonwhitespace_chars": 3822,
+    "fixture_nonwhitespace_chars": 3822,
+    "nonwhitespace_content_matches_source": true,
+    "table_body_rows": 171,
+    "legacy_chunks": 33,
+    "legacy_config_hash": "a02b66bedf7f"
+  },
+  {
+    "doc_id": "lvtu_8655766",
+    "status": "specification_fixture_not_vnext_chunker_output",
+    "normalizer_spec_version": "vnext-draft-1",
+    "source": "../../../html结构切分_2026-09-23/output/lvtu_8655766.simplified.html",
+    "source_sha256": "33de747657f2f8ca1418a26376ba27fc896d58cde03bb7c630f55dc5d74912dd",
+    "normalized_file": "lvtu_8655766.normalized.txt",
+    "normalized_sha256": "09d3a1703f529f8512151a79d196a6f0565e198a8c4e7634e00bbb1c9b38ce9f",
+    "normalized_chars": 1126,
+    "normalized_lines": 17,
+    "source_nonwhitespace_chars": 1109,
+    "fixture_nonwhitespace_chars": 1109,
+    "nonwhitespace_content_matches_source": true,
+    "table_body_rows": 0,
+    "legacy_chunks": 6,
+    "legacy_config_hash": "a02b66bedf7f"
+  }
+]

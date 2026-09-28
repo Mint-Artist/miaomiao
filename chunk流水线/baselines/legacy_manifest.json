@@ -1,0 +1,43 @@
+{
+  "baseline_id": "legacy-structure-0.1.0",
+  "is_production_B0": false,
+  "frozen_at": "2026-09-24",
+  "config_hash": "a02b66bedf7f",
+  "python": "3.9.6",
+  "dependencies": {
+    "beautifulsoup4": "4.12.3"
+  },
+  "sha256": {
+    "简版HTML提取_2026-09-23/README.md": "4f209d05dd0d2c066fea341535607e67dbdfc12414e7795c1e61238501dfeabd",
+    "简版HTML提取_2026-09-23/output/gk100_read_27177662.report.json": "5b15e31ef5d4a23f3bfb74a95eac143973f67b212fae4db65a0b6bdcb8e38072",
+    "简版HTML提取_2026-09-23/output/gk100_read_27177662.simplified.html": "285f85619b81190685fce6f48875f61bd767c78feba96bd38b1ee8e1a303c077",
+    "简版HTML提取_2026-09-23/output/huawei_zh-cn16079039.report.json": "9a6e1999844138d8e380031350ad20260ad82baa795fb9c1d8439050b649f8b6",
+    "简版HTML提取_2026-09-23/output/huawei_zh-cn16079039.simplified.html": "8d8e6e9c656fb9e6b78b1453c2c7f2d254ed032368356598608fe4b36dfcb6dd",
+    "简版HTML提取_2026-09-23/output/live/gk100_live.report.json": "5b15e31ef5d4a23f3bfb74a95eac143973f67b212fae4db65a0b6bdcb8e38072",
+    "简版HTML提取_2026-09-23/output/live/gk100_live.simplified.html": "285f85619b81190685fce6f48875f61bd767c78feba96bd38b1ee8e1a303c077",
+    "简版HTML提取_2026-09-23/output/live/huawei_live.report.json": "b01fc78816092415fb730c10c1d027afba2066a168311d3c376c909453fa2bb5",
+    "简版HTML提取_2026-09-23/output/live/huawei_live.simplified.html": "cbee394388c7f3b431a6ae7b9f658f7b9e1e55b75a77a55a0488bfff9ec82729",
+    "简版HTML提取_2026-09-23/output/lvtu_8655766.report.json": "809d4e392c8e068c5f190dd8994b6bea670dcb3dd1089132b7c16fd7261397eb",
+    "简版HTML提取_2026-09-23/output/lvtu_8655766.simplified.html": "480556d33b9a02f604149b7fc5fc5aca502e39c4fa878b454a7877490354109f",
+    "简版HTML提取_2026-09-23/run_examples.py": "2a180763007126b78924759ab0c276ca9d7dfe779640e9b47df8a67132cb23c6",
+    "简版HTML提取_2026-09-23/samples/gk100_read_27177662.raw.html": "a62dc8d9e2f4e878e7307214c492cd8d645415efd7c3b19cd1cb38a693d8420a",
+    "简版HTML提取_2026-09-23/samples/huawei_zh-cn16079039.raw.html": "5dd43447adfd8105ffb13fc8e263706d425a2db53efe0b7b9a713006a39774c8",
+    "简版HTML提取_2026-09-23/samples/lvtu_8655766.raw.html": "6ecb05ce2925bdf0b2c4433919b059597295d90220faec7b55ad5eb45319cc9f",
+    "简版HTML提取_2026-09-23/simplify_html.py": "159aeebf5f44ac35830f468a6d4b2ced12630de77049eb26a139e4cd7e04b534",
+    "简版HTML提取_2026-09-23/validate.py": "204724fd7882d1df2c5f5c6891c8b0986bd5d43799eac69495e153cbe73ea01d",
+    "html结构切分_2026-09-23/README.md": "fbe32003e5c4907bc10b0963ed6c4e6135782b556ef88f361e311848dd1e8035",
+    "html结构切分_2026-09-23/chunker.py": "6a263cc79b4a1e0fa047dff087684cc7b4e497a190f1b97bbfe7301f8da7f25f",
+    "html结构切分_2026-09-23/output/gk100_read_27177662.chunks.jsonl": "a6b430bbce5b7daff399510b85cce0278a0c4495f7efae7dc2646edd1cc18c71",
+    "html结构切分_2026-09-23/output/gk100_read_27177662.report.json": "3f11b0355668021da22465fc7e2f584f880405116352eea8cd58c7a9b269784d",
+    "html结构切分_2026-09-23/output/gk100_read_27177662.simplified.html": "bd9363e7ccbe370acaf3e70a80575dfea30789591a58e62e83a2078b3fb7cfe2",
+    "html结构切分_2026-09-23/output/huawei_zh-cn16079039.chunks.jsonl": "be856f0dc4ab8995ba1965fc4610a31772bfa8182e03c4a2eec495cd6f119f27",
+    "html结构切分_2026-09-23/output/huawei_zh-cn16079039.report.json": "99cc37ee442ca47cf52e78e8c99d06ff3d7643b0ad64cc3a03790162aefa8b19",
+    "html结构切分_2026-09-23/output/huawei_zh-cn16079039.simplified.html": "f96b960309c4db44a4ceaf75abfa0ad6f7ba53ad4a5b59301c5777861e6274ff",
+    "html结构切分_2026-09-23/output/huawei_zh-cn16079039_chunks.json": "be856f0dc4ab8995ba1965fc4610a31772bfa8182e03c4a2eec495cd6f119f27",
+    "html结构切分_2026-09-23/output/lvtu_8655766.chunks.jsonl": "8273325e695485011cb26007d497db2531ce602a4ad7949c807c62c99b00171b",
+    "html结构切分_2026-09-23/output/lvtu_8655766.report.json": "ef501b41a1504e02ec563cdff7b0a8964aefacd19f1723a6f71f36cacc8d95b9",
+    "html结构切分_2026-09-23/output/lvtu_8655766.simplified.html": "33de747657f2f8ca1418a26376ba27fc896d58cde03bb7c630f55dc5d74912dd",
+    "html结构切分_2026-09-23/run_examples.py": "72ab034a8a4a79c55ea2adcc0e9816e4e09337e1a81f5aa08d03b8e4f131e2df",
+    "html结构切分_2026-09-23/validate.py": "f094630a61f6d3b694aacabb8d618f81aac85db65bc90fe132d76fa47f69d656"
+  }
+}

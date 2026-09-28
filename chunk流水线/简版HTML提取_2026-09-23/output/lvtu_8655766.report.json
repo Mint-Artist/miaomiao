@@ -1,0 +1,26 @@
+{
+  "extractor_version": "0.1.0",
+  "url": "https://www.64365.com/zs/8655766.aspx",
+  "profile": "lvtu_zs",
+  "content_selector": "div.w810.fl > div:not([class])",
+  "title_selector": "h1",
+  "title": "公司裁员提成部分能要回吗",
+  "text_chars": 1109,
+  "tag_counts": {
+    "a": 23,
+    "div": 1,
+    "h1": 1,
+    "img": 1,
+    "p": 16,
+    "strong": 3
+  },
+  "tables": [],
+  "stats": {
+    "dedup_title_heading": 1,
+    "stripped:#btadv": 1,
+    "stripped:.detail-conts > div.mt20": 1,
+    "stripped:.mt15": 1,
+    "stripped:.statement-bar": 1
+  },
+  "warnings": []
+}

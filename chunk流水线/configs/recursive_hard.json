@@ -1,0 +1,6 @@
+{
+  "target_chars": 256,
+  "boundary_strategy": "recursive",
+  "budget_policy": "hard",
+  "context_mode": "none"
+}

@@ -1,0 +1,29 @@
+{
+  "extractor_version": "0.1.0",
+  "url": "https://consumer.huawei.com/cn/support/content/zh-cn16079039/",
+  "profile": "huawei_support",
+  "content_selector": "div[id^='body']",
+  "title_selector": "#knowledgeTitle",
+  "title": "华为儿童手表跨品牌添加联系人",
+  "text_chars": 680,
+  "tag_counts": {
+    "a": 1,
+    "div": 2,
+    "h1": 1,
+    "img": 4,
+    "li": 7,
+    "ol": 1,
+    "p": 7,
+    "ul": 1
+  },
+  "tables": [],
+  "stats": {
+    "kept_div:note": 2
+  },
+  "warnings": [
+    "img 缺 alt: https://consumer-tkbdownload.huawei.com/ctkbfm/servlet/download/downloadServlet/",
+    "img 缺 alt: https://consumer-tkbdownload.huawei.com/ctkbfm/servlet/download/downloadServlet/",
+    "img 缺 alt: https://consumer-tkbdownload.huawei.com/ctkbfm/servlet/download/downloadServlet/",
+    "img 缺 alt: https://consumer-tkbdownload.huawei.com/ctkbfm/servlet/download/downloadServlet/"
+  ]
+}
