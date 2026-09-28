@@ -1,7 +1,6 @@
 """Streaming raw-HTML JSONL runner; one complete comparison per input record."""
 import argparse
 from dataclasses import asdict
-import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -10,9 +9,10 @@ from .io import dumps, write_run
 from .model import ChunkConfig, PipelineError, digest
 from .normalize import normalize_html
 from .pipeline import chunk_document, retrieval_views
+from . import html_extract
 
 ROOT = Path(__file__).resolve().parents[1]
-EXTRACTOR = ROOT / '简版HTML提取_2026-09-23/simplify_html.py'
+EXTRACTOR = Path(html_extract.__file__).resolve()
 
 
 def load_configs(directory, absolute_chars):
@@ -30,10 +30,7 @@ def load_configs(directory, absolute_chars):
 
 
 def load_extractor():
-    spec = importlib.util.spec_from_file_location('chunk_frozen_extractor', EXTRACTOR)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return html_extract
 
 
 def summary_chunks(records, views, field):
@@ -104,7 +101,7 @@ def run_batch(input_path, out_dir, configs, html_field='pg', url_field='url',
                             views = retrieval_views(doc, records)
                             result[name] = summary_chunks(records, views, summary_field)
                             prepared.append((name, records, report, views))
-                    except (ValueError, TypeError, KeyError, AssertionError, RecursionError) as exc:
+                    except (ValueError, TypeError, KeyError, AttributeError, AssertionError, RecursionError) as exc:
                         error = {'line': line_no, 'url': url, 'phase': phase,
                                  'page_dir': str(page_dir.relative_to(out_dir)) if page_dir else None,
                                  'error_type': type(exc).__name__, 'error': str(exc)}

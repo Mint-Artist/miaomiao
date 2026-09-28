@@ -5,10 +5,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from chunk_pipeline.batch import load_configs, run_batch
+from chunk_pipeline.batch import load_configs, load_extractor, run_batch
 from run_examples import CASES
 
 
@@ -17,6 +18,27 @@ def read_rows(path):
 
 
 class BatchTests(unittest.TestCase):
+    def test_attribute_error_isolated_and_next_page_processed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            html = '<article><p>' + '保留的正文。' * 10 + '</p></article>'
+            (tmp / 'input').write_text(''.join(json.dumps({'url': url, 'pg': html}) + '\n'
+                                             for url in ['https://example.com/1', 'https://example.com/2']))
+            extractor = load_extractor()
+            original = extractor.extract
+            def extract_or_fail(html, **kwargs):
+                if kwargs['url'].endswith('/1'):
+                    raise AttributeError('simulated malformed-page error')
+                return original(html, **kwargs)
+            with patch.object(extractor, 'extract', side_effect=extract_or_fail):
+                state = run_batch(tmp / 'input', tmp / 'out', load_configs(ROOT / 'configs', 512),
+                                  progress_every=0)
+            self.assertEqual((state['succeeded'], state['failed']), (1, 1))
+            error = read_rows(tmp / 'out/errors.jsonl')[0]
+            self.assertEqual((error['line'], error['phase'], error['error_type']),
+                             (1, 'extract', 'AttributeError'))
+            self.assertEqual(read_rows(tmp / 'out/summary.jsonl')[0]['url'], 'https://example.com/2')
+
     def test_raw_samples_all_strategies_and_saved_html(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

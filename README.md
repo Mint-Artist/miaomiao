@@ -2,7 +2,7 @@
 
 代码入口和详细说明见 [chunk流水线/README.md](chunk流水线/README.md)。
 
-需要 Python 3.9+。在本分支检出目录执行：
+需要 Python 3.8+。在本分支检出目录执行：
 
 ```bash
 cd chunk流水线

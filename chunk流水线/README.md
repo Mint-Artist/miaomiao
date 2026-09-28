@@ -8,8 +8,8 @@
 
 ### 服务器 JSONL 批处理
 
-将整个 `chunk流水线/` 目录复制到服务器（包括 `configs/`、`chunk_pipeline/` 和
-`简版HTML提取_2026-09-23/simplify_html.py`），使用 Python 3.9+：
+将整个 `chunk流水线/` 目录复制到服务器（包括 `configs/`、`chunk_pipeline/`，
+旧提取器目录作为测试基线保留），使用 Python 3.8+：
 
 ```bash
 cd /path/to/chunk流水线
@@ -70,9 +70,14 @@ chunk_run_001/
 找不到正文容器会明确报错。`--profile generic` 可显式覆盖站点选择。
 本次没有扩大提取规则的站点覆盖范围，需要结合服务器上的 `errors.jsonl` 检查实际覆盖率。
 
+批处理使用当前维护的 `chunk_pipeline/html_extract.py`（v0.1.1）。此版本修复了
+清理父节点后继续访问已销毁子节点导致的 `AttributeError: 'NoneType' object has no attribute 'get'`，
+并将单页 `AttributeError` 隔离到错误日志。历史提取器 v0.1.0 保留作冻结基线，不用于批处理。
+更新后重跑请指定新的输出目录，例如 `chunk_run_002`，保留中断批次供核对。
+
 ### 本地样例与单页
 
-环境：Python 3.9+、beautifulsoup4 4.12.3。安装依赖：
+环境：Python 3.8+、beautifulsoup4 4.12.3。安装依赖：
 
 ```bash
 cd /Users/awh/work/chunk2026/chunk流水线
@@ -107,6 +112,7 @@ python3 -m chunk_pipeline \
 | 路径 | 职责 |
 |---|---|
 | `chunk_pipeline/normalize.py` | 简版 HTML → 文本 T、DOM 范围、结构原子、表格坐标、资源位置 |
+| `chunk_pipeline/html_extract.py` | 当前维护的原始 HTML → 简版 HTML 提取器；跳过清理中已销毁的后代节点 |
 | `chunk_pipeline/strategies.py` | 结构装箱、类型保护、递归基线；按原文范围切片 |
 | `chunk_pipeline/context.py` | 标题、表头、跨行继承和表格片段坐标的检索上下文 |
 | `chunk_pipeline/pipeline.py` | JSONL schema、严格验收、统计和独立检索视图/LLM 缓存适配 |
@@ -212,8 +218,8 @@ python3 简版HTML提取_2026-09-23/validate.py
 python3 html结构切分_2026-09-23/validate.py
 ```
 
-新版 45 个测试方法（包括 JSONL 原始网页批处理、失败隔离、重复 URL、服务器路径入口，
+新版 51 个测试方法（包括嵌套噪声清理回归、JSONL 原始网页批处理、失败隔离、重复 URL、服务器路径入口，
 以及 15 个样本×配置组合和 80 次固定种子随机预算/还原检查）；旧版验收分别 37/37、36/36。
-测试中的字符计数替身仅验证接口守卫，不是实际 embedding token 验证。
+测试已在 Python 3.8.20 和 3.9.6 上通过。测试中的字符计数替身仅验证接口守卫，不是实际 embedding token 验证。
 
 规格依据：[正文契约](规格/vNext/正文契约与切分规则.md)、[前沿调研与建议](../调研与资料/chunk方法审视_2026-09-24/前沿调研与方案建议.md)。
