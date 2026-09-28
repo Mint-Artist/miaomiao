@@ -32,8 +32,21 @@ from urllib.parse import urljoin
 
 from bs4 import (BeautifulSoup, Comment, Doctype, NavigableString,
                  ProcessingInstruction, Tag)
+from soupsieve import compile as compile_selector, SelectorSyntaxError
 
-EXTRACTOR_VERSION = '0.1.1'
+EXTRACTOR_VERSION = '0.1.2'
+
+
+def validate_content_options(content_selector=None, content_fallback='strict'):
+    if content_fallback not in ('strict', 'body'):
+        raise ValueError('content_fallback must be strict or body')
+    if content_selector is not None:
+        if not content_selector.strip():
+            raise ValueError('content_selector must not be empty')
+        try:
+            compile_selector(content_selector)
+        except SelectorSyntaxError as exc:
+            raise ValueError('Invalid content selector: ' + str(exc)) from exc
 
 # ---------------------------------------------------------------- 规则表
 
@@ -440,7 +453,8 @@ def serialize(root_children):
 # ---------------------------------------------------------------- 主流程
 
 def extract(html, url=None, profile_name=None, anchors=False,
-            promote_pseudo=False):
+            promote_pseudo=False, content_selector=None, content_fallback='strict'):
+    validate_content_options(content_selector, content_fallback)
     profile = pick_profile(url, profile_name)
     soup = BeautifulSoup(html, 'html.parser')
     warnings = []
@@ -454,9 +468,21 @@ def extract(html, url=None, profile_name=None, anchors=False,
     else:
         warnings.append('未找到标题')
 
-    root, content_sel = first_with_text(soup, profile['content'], min_chars=20)
+    if content_selector is not None:
+        root, content_sel = first_with_text(soup, [content_selector], min_chars=1)
+        extraction_mode = 'explicit_selector'
+    else:
+        root, content_sel = first_with_text(soup, profile['content'], min_chars=20)
+        extraction_mode = 'profile_selector'
+    if root is None and content_fallback == 'body':
+        root = soup.body if soup.body is not None else soup
+        content_sel = 'body' if root is not soup else '[document]'
+        extraction_mode = 'body_fallback'
+        warnings.append('正文选择器未命中，回退清理整个 body/HTML 片段；可能包含导航等非正文，请抽样检查')
     if root is None:
-        raise ValueError(f'未找到正文容器（profile={profile["name"]}）')
+        selectors = [content_selector] if content_selector is not None else profile['content']
+        raise ValueError(f'未找到正文容器（profile={profile["name"]}, selectors={selectors}）；'
+                         '可指定 --content-selector，或显式启用 --content-fallback body 后抽样检查')
 
     doc = BeautifulSoup('', 'html.parser')
     out_root = doc.new_tag('div')  # 临时容器，序列化时取其子节点
@@ -485,6 +511,11 @@ def extract(html, url=None, profile_name=None, anchors=False,
 
     # 正文子树复制到独立 fragment 再清理，避免改动原 soup
     fragment = BeautifulSoup(str(root), 'html.parser')
+    # Fragment fallback must not turn document head/title into body content.
+    if extraction_mode == 'body_fallback':
+        for head in list(fragment.find_all('head')):
+            if head.attrs is not None:
+                head.decompose()
     stats = Counter()
     for sel in profile.get('strip', []):
         for node in fragment.select(sel):
@@ -500,6 +531,8 @@ def extract(html, url=None, profile_name=None, anchors=False,
     pruned = prune_empty(fragment)
     if pruned:
         stats['pruned_empty'] = pruned
+    if extraction_mode == 'body_fallback' and not fragment.get_text(strip=True) and not fragment.find('img'):
+        raise ValueError('正文回退后没有可用文字或图片；请检查 pg 是否为空、仅脚本或需要浏览器渲染')
 
     for child in list(fragment.children):
         if isinstance(child, NavigableString):
@@ -557,6 +590,8 @@ def extract(html, url=None, profile_name=None, anchors=False,
         'url': url,
         'profile': profile['name'],
         'content_selector': content_sel,
+        'extraction_mode': extraction_mode,
+        'content_fallback_used': extraction_mode == 'body_fallback',
         'title_selector': title_sel,
         'title': title,
         'text_chars': text_chars,
@@ -574,6 +609,8 @@ def main():
     ap.add_argument('--html', type=Path, required=True, help='原始 HTML 文件')
     ap.add_argument('--url', help='页面 URL（用于匹配站点配置和绝对化链接）')
     ap.add_argument('--profile', help='强制站点配置名')
+    ap.add_argument('--content-selector', help='显式正文 CSS 选择器')
+    ap.add_argument('--content-fallback', choices=['strict', 'body'], default='strict')
     ap.add_argument('--anchors', action='store_true', help='块级元素加 data-src 锚点')
     ap.add_argument('--promote-pseudo-headings', action='store_true',
                     help='加粗短段落提升为标题（标 data-origin=inferred）')
@@ -584,7 +621,8 @@ def main():
     html = args.html.read_text(encoding='utf-8')
     simplified, report = extract(html, url=args.url, profile_name=args.profile,
                                  anchors=args.anchors,
-                                 promote_pseudo=args.promote_pseudo_headings)
+                                 promote_pseudo=args.promote_pseudo_headings,
+                                 content_selector=args.content_selector, content_fallback=args.content_fallback)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(simplified, encoding='utf-8')

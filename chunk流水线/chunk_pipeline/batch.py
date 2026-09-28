@@ -42,9 +42,11 @@ def summary_chunks(records, views, field):
 
 
 def run_batch(input_path, out_dir, configs, html_field='pg', url_field='url',
-              summary_field='index_text', profile=None, progress_every=100):
+              summary_field='index_text', profile=None, progress_every=100,
+              content_selector=None, content_fallback='strict'):
     """Keep memory bounded to one input page; retain failures outside summary."""
     extractor = load_extractor()
+    extractor.validate_content_options(content_selector, content_fallback)
     if profile:
         extractor.pick_profile('', profile)  # Reject invalid global options before output.
     if summary_field not in ('index_text', 'text'):
@@ -59,6 +61,8 @@ def run_batch(input_path, out_dir, configs, html_field='pg', url_field='url',
             'configs': {name: asdict(cfg) for name, cfg in configs},
             'extractor_sha256': digest(EXTRACTOR.read_text(encoding='utf-8')),
             'extractor_version': extractor.EXTRACTOR_VERSION, 'profile_override': profile,
+            'content_selector_override': content_selector, 'content_fallback': content_fallback,
+            'fallback_extracted': 0,
             'lines': 0, 'blank_lines': 0, 'succeeded': 0, 'failed': 0,
         }
         (out_dir / 'run.json').write_text(dumps(state), encoding='utf-8')
@@ -88,7 +92,10 @@ def run_batch(input_path, out_dir, configs, html_field='pg', url_field='url',
                         page_dir.mkdir(parents=True)
                         phase = 'extract'
                         simplified, extraction = extractor.extract(html, url=url,
-                                                                    profile_name=profile, anchors=True)
+                                                                    profile_name=profile, anchors=True,
+                                                                    content_selector=content_selector,
+                                                                    content_fallback=content_fallback)
+                        state['fallback_extracted'] += int(extraction['content_fallback_used'])
                         (page_dir / 'simplified.html').write_text(simplified, encoding='utf-8')
                         (page_dir / 'extraction.json').write_text(dumps(extraction), encoding='utf-8')
                         phase = 'normalize'
@@ -143,6 +150,9 @@ def main():
     ap.add_argument('--url-field', default='url')
     ap.add_argument('--summary-field', choices=['index_text', 'text'], default='index_text')
     ap.add_argument('--profile', help='Optional forced extractor site profile')
+    ap.add_argument('--content-selector', help='Explicit body CSS selector, overriding site content selectors')
+    ap.add_argument('--content-fallback', choices=['strict', 'body'], default='strict',
+                    help='On selector miss: fail (strict), or clean full body/fragment (body; inspect for noise)')
     ap.add_argument('--progress-every', type=int, default=100)
     args = ap.parse_args()
     if args.progress_every < 0:
@@ -150,7 +160,8 @@ def main():
     try:
         configs = load_configs(args.config_dir, args.absolute_chars)
         state = run_batch(args.input, args.out_dir, configs, args.html_field, args.url_field,
-                          args.summary_field, args.profile, args.progress_every)
+                          args.summary_field, args.profile, args.progress_every,
+                          args.content_selector, args.content_fallback)
     except (ValueError, OSError) as exc:
         print('ERROR: ' + str(exc), file=sys.stderr)
         return 2

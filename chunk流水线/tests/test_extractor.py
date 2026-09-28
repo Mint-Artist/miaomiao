@@ -43,7 +43,54 @@ class ExtractorTests(unittest.TestCase):
         simplified, report = html_extract.extract(html, url='https://example.com', anchors=True)
         self.assertIn(body, simplified)
         self.assertNotIn('应删除', simplified)
-        self.assertEqual(report['extractor_version'], '0.1.1')
+        self.assertEqual(report['extractor_version'], '0.1.2')
+
+    def test_unknown_container_requires_opt_in_fallback(self):
+        body = '政府信息公开正文。' * 10
+        html = '<html><head><title>公告</title></head><body><nav><a>导航</a></nav><div id="unusual">' + body + '</div><footer>页脚</footer></body></html>'
+        with self.assertRaisesRegex(ValueError, '未找到正文容器'):
+            html_extract.extract(html)
+        simplified, report = html_extract.extract(html, content_fallback='body')
+        self.assertIn(body, simplified)
+        self.assertNotIn('导航', simplified)
+        self.assertNotIn('页脚', simplified)
+        self.assertEqual(report['extraction_mode'], 'body_fallback')
+        self.assertTrue(report['content_fallback_used'])
+        self.assertEqual(report['content_selector'], 'body')
+
+    def test_explicit_selector_excludes_other_text_and_accepts_short_body(self):
+        html = '<h1>标题</h1><div id="gov-text">正文很短</div><div>不相关信息</div>'
+        simplified, report = html_extract.extract(html, content_selector='#gov-text')
+        self.assertIn('正文很短', simplified)
+        self.assertNotIn('不相关信息', simplified)
+        self.assertEqual(report['extraction_mode'], 'explicit_selector')
+        self.assertFalse(report['content_fallback_used'])
+
+    def test_fallback_fragment_preserves_paragraphs_table_and_excludes_head(self):
+        html = '<head><title>公告</title><meta name="x"></head><p>首段</p><table><tr><td>数据</td></tr></table><p>末段</p>'
+        simplified, report = html_extract.extract(html, content_fallback='body')
+        self.assertEqual(report['content_selector'], '[document]')
+        self.assertEqual(simplified.count('公告'), 1)
+        self.assertIn('<table>', simplified)
+        self.assertIn('首段', simplified)
+        self.assertIn('末段', simplified)
+
+    def test_fallback_does_not_make_empty_page_successful(self):
+        for html in ('<html><head><title>标题</title></head><body><script>render()</script></body></html>', '', '<style>p{}</style>'):
+            with self.subTest(html=html), self.assertRaisesRegex(ValueError, '没有可用文字或图片'):
+                html_extract.extract(html, content_fallback='body')
+
+    def test_fallback_preserves_existing_selector_precedence(self):
+        html = '<body><article><p>' + '正文。' * 20 + '</p></article><div>不相关信息</div></body>'
+        old, _ = html_extract.extract(html)
+        new, report = html_extract.extract(html, content_fallback='body')
+        self.assertEqual(old, new)
+        self.assertFalse(report['content_fallback_used'])
+
+    def test_invalid_content_options_fail_explicitly(self):
+        for options in ({'content_selector': '['}, {'content_selector': ''}, {'content_fallback': 'other'}):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                html_extract.extract('<p>正文</p>', **options)
 
     def test_existing_sample_outputs_match_frozen_extractor(self):
         path = ROOT / '简版HTML提取_2026-09-23/simplify_html.py'
@@ -57,6 +104,8 @@ class ExtractorTests(unittest.TestCase):
                 new_html, new_report = html_extract.extract(raw, url=url, anchors=True)
                 self.assertEqual(new_html, old_html)
                 new_report.pop('extractor_version')
+                new_report.pop('extraction_mode')
+                new_report.pop('content_fallback_used')
                 old_report.pop('extractor_version')
                 self.assertEqual(new_report, old_report)
 

@@ -18,6 +18,25 @@ def read_rows(path):
 
 
 class BatchTests(unittest.TestCase):
+    def test_cli_body_fallback_and_trace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'input').write_text(json.dumps({'url': 'https://example.com', 'pg':
+                '<body><div id="gov-text"><p>正文内容。</p></div></body>'}) + '\n')
+            cmd = [sys.executable, str(ROOT / 'run_jsonl.py'), '--input', str(tmp / 'input'),
+                   '--out-dir', str(tmp / 'out'), '--absolute-chars', '512', '--content-fallback', 'body']
+            result = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((tmp / 'out/run.json').read_text())
+            self.assertEqual((state['succeeded'], state['fallback_extracted']), (1, 1))
+            page = read_rows(tmp / 'out/pages.jsonl')[0]
+            report = json.loads((tmp / 'out' / page['page_dir'] / 'extraction.json').read_text())
+            self.assertTrue(report['content_fallback_used'])
+            cmd[cmd.index('--out-dir') + 1] = str(tmp / 'invalid')
+            result = subprocess.run(cmd + ['--content-selector', '['], cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertFalse((tmp / 'invalid').exists())
+
     def test_attribute_error_isolated_and_next_page_processed(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

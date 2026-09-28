@@ -70,10 +70,25 @@ chunk_run_001/
 找不到正文容器会明确报错。`--profile generic` 可显式覆盖站点选择。
 本次没有扩大提取规则的站点覆盖范围，需要结合服务器上的 `errors.jsonl` 检查实际覆盖率。
 
-批处理使用当前维护的 `chunk_pipeline/html_extract.py`（v0.1.1）。此版本修复了
-清理父节点后继续访问已销毁子节点导致的 `AttributeError: 'NoneType' object has no attribute 'get'`，
-并将单页 `AttributeError` 隔离到错误日志。历史提取器 v0.1.0 保留作冻结基线，不用于批处理。
+批处理使用当前维护的 `chunk_pipeline/html_extract.py`（v0.1.2）。此版本保留了 v0.1.1 对
+清理父节点后继续访问已销毁子节点导致的 `AttributeError: 'NoneType' object has no attribute 'get'`
+的修复，并将单页 `AttributeError` 隔离到错误日志。历史提取器 v0.1.0 保留作冻结基线，不用于批处理。
 更新后重跑请指定新的输出目录，例如 `chunk_run_002`，保留中断批次供核对。
+
+遇到大量“未找到正文容器”时，先区分完整网页和已提取的正文片段。默认
+`--content-fallback strict` 保持原有严格选择行为；完整网页的正文定位还需针对实际模板确认。
+如已确认正文位于某个元素，可指定 `--content-selector '#gov-text'`，覆盖站点正文选择器。
+显式选择器允许短正文（至少 1 个文字字符），未命中时仍按回退选项处理。
+
+为排查容器不匹配，可显式加 `--content-fallback body`：原选择器未命中时才清理整个
+`body`；没有 `body` 标签时清理 HTML 片段并去掉 `head`。保留现有噪声过滤和结构标签，
+但不保证去除所有导航、侧栏等非正文。仅脚本或空页面不会因回退被算作成功。
+这不是新的正文识别模型；完整 HTML 上使用后须抽样检查简版 HTML，不能用成功率证明提取质量。
+
+`extraction.json` 的 `extraction_mode` 区分 `profile_selector`、`explicit_selector` 和
+`body_fallback`，同时记录实际 `content_selector`、`content_fallback_used` 和警告。
+`run.json` 的 `fallback_extracted` 统计成功完成回退提取的页数（包含随后切分失败的页），
+与整条流水线的 `succeeded` 是不同口径。所有策略仍共享同一次提取结果。
 
 ### 本地样例与单页
 
@@ -218,7 +233,7 @@ python3 简版HTML提取_2026-09-23/validate.py
 python3 html结构切分_2026-09-23/validate.py
 ```
 
-新版 51 个测试方法（包括嵌套噪声清理回归、JSONL 原始网页批处理、失败隔离、重复 URL、服务器路径入口，
+新版 58 个测试方法（包括嵌套噪声清理、严格/显式选择器/整页回退、JSONL 原始网页批处理、失败隔离、重复 URL、服务器路径入口，
 以及 15 个样本×配置组合和 80 次固定种子随机预算/还原检查）；旧版验收分别 37/37、36/36。
 测试已在 Python 3.8.20 和 3.9.6 上通过。测试中的字符计数替身仅验证接口守卫，不是实际 embedding token 验证。
 
