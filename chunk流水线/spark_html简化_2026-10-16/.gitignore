@@ -1,0 +1,8 @@
+# 构建产物
+*.jar
+.scala-build/
+.bsp/
+# 验证数据与输出（含第三方网页内容，按 README 在本地重新生成）
+validation/*.jsonl
+validation/*.json
+validation/compare_viewer.html
