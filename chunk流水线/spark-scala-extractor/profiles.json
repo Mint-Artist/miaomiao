@@ -1,0 +1,32 @@
+[
+  {
+    "name": "huawei_support",
+    "url_contains": ["consumer.huawei.com"],
+    "title": ["#knowledgeTitle", "h1"],
+    "content": ["div.jd-content div[id^='body']", "div[id^='body']"],
+    "metadata": [{"selector": ".s-tips"}],
+    "strip": [],
+    "noise": []
+  },
+  {
+    "name": "gk100",
+    "url_contains": ["gk100.com"],
+    "title": [".article-title", "h1"],
+    "content": [".article article", ".article"],
+    "metadata": [
+      {"selector": ".article > p.text-12 > span", "label": "作者"},
+      {"selector": ".article > p.text-12 > time", "label": "发布时间"}
+    ],
+    "strip": [],
+    "noise": [".showModuleYMZY", "[id$='YmzyTg']"]
+  },
+  {
+    "name": "lvtu_zs",
+    "url_contains": ["64365.com"],
+    "title": ["h1", "title"],
+    "content": ["div.w810.fl > div:not([class])"],
+    "metadata": [{"selector": ".mt15 div.s-cb.lh24 span"}],
+    "strip": [".mt15", "#btadv", ".statement-bar", ".detail-conts > div.mt20"],
+    "noise": []
+  }
+]

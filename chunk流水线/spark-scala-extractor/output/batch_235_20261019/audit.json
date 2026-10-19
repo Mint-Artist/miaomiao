@@ -1,0 +1,786 @@
+{
+  "total": 235,
+  "status_counts": {
+    "ok": 208,
+    "failed": 20,
+    "degraded": 7
+  },
+  "profile_counts": {
+    "lvtu_zs": 6,
+    "generic": 208,
+    "unknown": 20,
+    "huawei_support": 1
+  },
+  "host_count": 127,
+  "missing_title_pages": 1,
+  "median_ratio": 0.0424,
+  "median_text_chars": 988,
+  "suspicious_candidates": 18,
+  "hosts": {
+    "3g.163.com": {
+      "pages": 3,
+      "ok": 3,
+      "degraded": 0,
+      "failed": 0
+    },
+    "alt-szb.xjmty.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "app.myzaker.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "app.xinhuanet.com": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "applocal.myzaker.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "baike.baidu.com": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 0,
+      "failed": 1
+    },
+    "browser.qq.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "caifuhao.eastmoney.com": {
+      "pages": 4,
+      "ok": 0,
+      "degraded": 0,
+      "failed": 4
+    },
+    "cj.sina.com.cn": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 1,
+      "failed": 0
+    },
+    "consumer.huawei.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "easylearn.baidu.com": {
+      "pages": 5,
+      "ok": 0,
+      "degraded": 0,
+      "failed": 5
+    },
+    "finance.ce.cn": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 1,
+      "failed": 0
+    },
+    "finance.sina.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "finance.sina.com.cn": {
+      "pages": 8,
+      "ok": 8,
+      "degraded": 0,
+      "failed": 0
+    },
+    "finance.stockstar.com": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 1,
+      "failed": 0
+    },
+    "fyqyw.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "g.pconline.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "ghzrzyw.beijing.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "gzstv.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "he.huatu.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "health.baidu.com": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "hhzb.huainannet.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "hot.dzwww.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "hy.bendibao.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "jingyan.baidu.com": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "k.sina.cn": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "k.sina.com.cn": {
+      "pages": 2,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 1
+    },
+    "keywords.china.org.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "lib.nufe.edu.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "livechina.cctv.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.10jqka.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.163.com": {
+      "pages": 5,
+      "ok": 5,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.39.net": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.800820.net": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.baidu.com": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.baike.com": {
+      "pages": 3,
+      "ok": 3,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.bendibao.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.bohe.cn": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.cnr.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.csai.cn": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 0,
+      "failed": 1
+    },
+    "m.dg.bendibao.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.familydoctor.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.gd.huatu.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.gmw.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.jiwu.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.moguvet.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.ourjiangsu.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.shebao.southmoney.com": {
+      "pages": 4,
+      "ok": 4,
+      "degraded": 0,
+      "failed": 0
+    },
+    "m.toutiao.com": {
+      "pages": 2,
+      "ok": 0,
+      "degraded": 0,
+      "failed": 2
+    },
+    "movie.douban.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "news.bjd.com.cn": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 1,
+      "failed": 0
+    },
+    "news.cctv.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "news.china.com": {
+      "pages": 3,
+      "ok": 3,
+      "degraded": 0,
+      "failed": 0
+    },
+    "news.cnr.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "news.qq.com": {
+      "pages": 13,
+      "ok": 12,
+      "degraded": 0,
+      "failed": 1
+    },
+    "news.sohu.com": {
+      "pages": 15,
+      "ok": 15,
+      "degraded": 0,
+      "failed": 0
+    },
+    "news.styletv.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "nv.99.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "paper.people.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "pc.kanbing.net": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "post.smzdm.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "s.fh21.com.cn": {
+      "pages": 3,
+      "ok": 3,
+      "degraded": 0,
+      "failed": 0
+    },
+    "school.freekaoyan.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "shebao.southmoney.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "sports.163.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "szyyj.gd.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "view.inews.qq.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "views.ce.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "wenwen.sogou.com": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.163.com": {
+      "pages": 12,
+      "ok": 11,
+      "degraded": 1,
+      "failed": 0
+    },
+    "www.52hrtt.com": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.64365.com": {
+      "pages": 6,
+      "ok": 6,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.81.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.acfic.org.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.amazon.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.anjuke.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.bjwmb.gov.cn": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 1,
+      "failed": 0
+    },
+    "www.caacnews.com.cn": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.ccnu.edu.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.cdwz8.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.cfsn.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.chinanews.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.cnpinpai.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.cnr.cn": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.cs.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.cs.zju.edu.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.digitaling.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.dswxyjy.org.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.fh21.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.gafei.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.goethe-slz.sh.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.hys.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.ifnews.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.insjz.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.jianshu.com": {
+      "pages": 4,
+      "ok": 4,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.jingmu.net": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.jinjiang.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.jur.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.jzmsm.org": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.kepuchina.cn": {
+      "pages": 8,
+      "ok": 8,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.lifetimes.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.maigoo.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.mjgov.cn": {
+      "pages": 3,
+      "ok": 3,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.myzaker.com": {
+      "pages": 2,
+      "ok": 0,
+      "degraded": 0,
+      "failed": 2
+    },
+    "www.npc.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.php.cn": {
+      "pages": 2,
+      "ok": 0,
+      "degraded": 0,
+      "failed": 2
+    },
+    "www.pingjiang.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.pintu360.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.qlwb.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.rmzxb.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.sina.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.sport.gov.cn": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.tcpc.org.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.thepaper.cn": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.tja.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.tljq.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.toutiao.com": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 0,
+      "failed": 1
+    },
+    "www.tynews.com.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.xjsw.gov.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.yisuanju.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.yoojia.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.youbianku.com": {
+      "pages": 3,
+      "ok": 3,
+      "degraded": 0,
+      "failed": 0
+    },
+    "www.zhiguf.com": {
+      "pages": 2,
+      "ok": 2,
+      "degraded": 0,
+      "failed": 0
+    },
+    "yf.net.cn": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "zh.gyscw.com": {
+      "pages": 1,
+      "ok": 1,
+      "degraded": 0,
+      "failed": 0
+    },
+    "zhidao.baidu.com": {
+      "pages": 7,
+      "ok": 7,
+      "degraded": 0,
+      "failed": 0
+    },
+    "zjj.qhd.gov.cn": {
+      "pages": 1,
+      "ok": 0,
+      "degraded": 1,
+      "failed": 0
+    }
+  },
+  "errors": {
+    "未找到可用正文（可能为空页、仅脚本或需要浏览器渲染）": 20
+  }
+}
