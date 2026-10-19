@@ -1,7 +1,8 @@
 # Spark Scala HTML 简版提取器
 
 输入完整 HTML 字符串，输出保留语义结构的简版 HTML 字符串。
-Scala 2.12 + Spark 3.5 + Jsoup；**无 Python 依赖，可打 fat jar 提交到 JVM Spark 集群**。
+**服务器工件面向 Scala 2.11 + Spark 2.4.x（JVM 1.8）**；本地开发测试仍可用
+Scala CLI 2.12 + Spark 3.5 跑同一份源码。无 Python 运行时依赖。
 
 ## 架构
 
@@ -28,6 +29,7 @@ Scala 2.12 + Spark 3.5 + Jsoup；**无 Python 依赖，可打 fat jar 提交到 
 | `Profiles.scala` + `profiles.json` | 51 + 配置 | 站点覆盖层 |
 | `SimplifyFile.scala` | 40 | 单文件调试入口 |
 | `SimplifyHtml.test.scala` | 94 | 黄金测试、通用路径与空内容回归断言 |
+| `pom.xml` | — | Scala 2.11.12 + Spark 2.4.8 服务器构建 |
 | `batch_audit.py` | — | 批次指标汇总、失败/降级/抽检清单 |
 | `samples/`、`expected/` | — | 三样本原始 HTML 与 Python 0.1.2 基准输出 |
 | `output/generic/` | — | 三样本强制通用路径的实际输出与报告 |
@@ -98,15 +100,28 @@ scala-cli run . --main-class extractor.SimplifyFile -- \
 
 ## 打包
 
+### 服务器工件：Scala 2.11 + Spark 2.4.x
+
 ```bash
-scala-cli --power package . --assembly --preamble=false \
-  --provided org.apache.spark::spark-sql \
-  --main-class extractor.SimplifyHtmlJob \
-  -o spark-scala-extractor.jar -f
+mvn -DskipTests package
+cp target/spark-scala-extractor-scala211.jar spark-scala-extractor.jar
 ```
 
-当前产物：`spark-scala-extractor.jar`（约 637 KB；已含 Jsoup 与 org.json，
-Spark 由集群提供）。
+`pom.xml` 使用 Scala 2.11.12、Spark 2.4.8（provided）、JVM 1.8 目标；
+Shade 会把 Jsoup 与 org.json 重定位到 `extractor.internal.*`，避免集群依赖冲突。
+当前已验证：
+
+- `spark-scala-extractor.jar` 主类字节码 major version = 52（JVM 1.8）；
+- 用该 jar 对三个样本分别运行，输出与 Python 基准**逐字节一致**。
+
+### 本地开发：Scala CLI 2.12
+
+Scala CLI 1.18 已不再支持 Scala 2.11；`project.scala` 仅用于本地开发和测试，
+不参与服务器工件构建：
+
+```bash
+scala-cli test .
+```
 
 ## 集群提交
 
@@ -115,6 +130,8 @@ Spark 由集群提供）。
 ```json
 {"doc_id":"page-1","url":"https://example.com/a","pg":"<html><h1>标题</h1><main><p>正文……</p></main></html>"}
 ```
+
+服务器需为 **Spark 2.4.x / Scala 2.11 运行时**；不要提交到 Spark 3.x 集群：
 
 ```bash
 spark-submit \
