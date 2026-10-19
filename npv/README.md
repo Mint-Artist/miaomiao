@@ -13,6 +13,9 @@
 - `claude/特征探索与新特征建议.md`：现有特征逐个拆解、五类判错、四层新特征清单与筛选流程。
 - `claude/权威度调研/页面本身信号的业界做法调研.md`：无点击数据时业界如何从页面本身判权威与质量。
 - `claude/权威度调研/`：业界与学术界权威度方案调研、行动清单与待对齐问题。
+- `claude/autoresearch/NPV自动研究框架初步方案.md`：autoresearch 式自改进循环的调研与初步方案：三层循环、数据切分、Ladder 门槛、严格一致率、搜索空间分层、program.md 与 run.py 草稿。
+- `claude/autoresearch/五个问题的回答与方案修订.md`：标签规模与判官准确率、数值交给优化器而 agent 只做特征工程、分数段覆盖、内网只有 OpenAI 格式接口时的框架选型。
+- `claude/autoresearch/pi框架可行性评估.md`：pi 编程 agent 与 pi-autoresearch 用于该循环的可行性、配置示意与实测清单。
 
 快速验证（纯标准库，Python 3.8+）：
 
