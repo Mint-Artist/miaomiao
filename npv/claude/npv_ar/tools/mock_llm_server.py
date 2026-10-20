@@ -3,6 +3,7 @@
 
   python tools/mock_llm_server.py --scenario normal --port 8787
   python tools/mock_llm_server.py --scenario cheat  --port 8787
+  python tools/mock_llm_server.py --scenario echo   --port 8787   # 听话模型，用于 probe_llm.py 自测
 
 第 n 步返回什么，由请求里已有的 tool 结果条数决定。支持流式与非流式。
 """
@@ -59,6 +60,25 @@ SCENARIOS = {
 }
 
 
+def echo_step(req, msgs):
+    """echo 场景：像一个听话的模型。用于 probe_llm.py 自测。
+    - 上一条是工具结果 → 用文字复述它的前 80 个字符；
+    - 用户要求调用某个已声明的工具 → 按要求调用（run_eval 带 hypothesis/desc，read 带路径）；
+    - 其他 → 回答"好"。"""
+    tools = {t["function"]["name"] for t in req.get("tools") or []}
+    last = msgs[-1] if msgs else {}
+    tool_msgs = [m for m in msgs if m.get("role") == "tool"]
+    if tool_msgs and last.get("role") in ("tool", "user"):
+        return {"text": "工具返回: " + str(tool_msgs[-1].get("content"))[:80]}
+    text = str(last.get("content") or "")
+    if "run_eval" in tools and "run_eval" in text:
+        return {"tool": "run_eval", "args": {"hypothesis": "测试", "desc": "连通性检查"}}
+    m = re.search(r"读\s*([\w./-]+)", text)
+    if "read" in tools and m:
+        return {"tool": "read", "args": {"path": m.group(1)}}
+    return {"text": "好"}
+
+
 class Handler(BaseHTTPRequestHandler):
     scenario = "normal"
 
@@ -81,8 +101,11 @@ class Handler(BaseHTTPRequestHandler):
         req = json.loads(self.rfile.read(n) or b"{}")
         msgs = req.get("messages", [])
         n_tool = sum(1 for m in msgs if m.get("role") == "tool")
-        steps = SCENARIOS[self.scenario]
-        step = steps[min(n_tool, len(steps) - 1)]
+        if self.scenario == "echo":
+            step = echo_step(req, msgs)
+        else:
+            steps = SCENARIOS[self.scenario]
+            step = steps[min(n_tool, len(steps) - 1)]
         print(f"[mock] tool_results_seen={n_tool} -> {step.get('tool') or 'text'}", flush=True)
         if "tool" in step:
             args = {k: (v() if callable(v) else v) for k, v in step["args"].items()}
@@ -139,7 +162,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--scenario", choices=sorted(SCENARIOS), default="normal")
+    p.add_argument("--scenario", choices=sorted(SCENARIOS) + ["echo"], default="normal")
     p.add_argument("--port", type=int, default=8787)
     a = p.parse_args(argv)
     Handler.scenario = a.scenario

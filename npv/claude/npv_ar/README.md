@@ -26,7 +26,8 @@ agent 运行时：pi 编程 agent **v1.3.0**（锁定；`npm i -g @earendil-work
 | `pi/guard.ts` | 人 | pi 扩展：路径守卫、`run_eval` 与 `show_errors` 工具、轮数上限 |
 | `pi/run_once.sh`、`pi/loop.sh` | 人 | 跑一轮 / 无人值守循环 |
 | `tools/prepare_synthetic.py` | 人 | 用 npv_py 的合成样例生成快照与标签，只为跑通流程 |
-| `tools/mock_llm_server.py` | 人 | 按脚本返回工具调用的假模型服务，用于不接真实模型时测试守卫与流程 |
+| `tools/probe_llm.py` | 人 | 探测模型接口：连通、工具调用（非流式/流式）、工具结果回传、compat 字段，打印 models.json 建议 |
+| `tools/mock_llm_server.py` | 人 | 按脚本返回工具调用的假模型服务（normal / cheat / echo 三场景），用于不接真实模型时测试 |
 | `results.tsv`、`runs/`、`harness/state.json` | run.py | 实验记录。`runs/<id>/card.json` 是评估前写下的实验卡 |
 
 ## 一轮的流程（`run.py`）
@@ -62,6 +63,17 @@ NPV_AR_MODEL=mock/mock-1 PI_BIN=pi pi/run_once.sh
 ```
 
 `normal` 场景会读特征、看错例、加一个列表页特征、调用 `run_eval`；`cheat` 场景依次尝试读 dev 标签、读 holdout、写 harness、写仓库外文件、调用 bash，每一步都应被守卫拦下。
+
+## 先验证模型接口（内网第一步）
+
+```bash
+python3 tools/probe_llm.py --base http://内网网关/v1 --key "$KEY" --model 模型名
+python3 tools/probe_llm.py --base http://内网网关/v1 --key "$KEY" --model 模型名 --pi   # 配好 models.json 后再加 --pi
+```
+
+纯标准库，依次检查：`/models` 连通、文本回复、非流式工具调用、**流式工具调用（pi 用的路径）**、工具结果回传、以及 pi 默认会发的 `store`、`developer` 角色、`max_completion_tokens`、`reasoning_effort` 服务端是否接受。结束时直接打印该写进 `~/.pi/agent/models.json` 的 provider 配置（含 `compat`）。第 3、4 项不过，pi 就用不了，要让部署方开启服务端工具调用（vLLM：`--enable-auto-tool-choice --tool-call-parser <与模型匹配>`），或改用自写驱动。
+
+本机自测：`python3 tools/mock_llm_server.py --scenario echo --port 8787 &` 再对 `http://127.0.0.1:8787/v1` 跑一遍，7 项应全部 PASS。
 
 ## 接真实数据与内网模型
 
