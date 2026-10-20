@@ -16,6 +16,7 @@
 - `claude/autoresearch/NPV自动研究框架初步方案.md`：autoresearch 式自改进循环的调研与初步方案：三层循环、数据切分、Ladder 门槛、严格一致率、搜索空间分层、program.md 与 run.py 草稿。
 - `claude/autoresearch/五个问题的回答与方案修订.md`：标签规模与判官准确率、数值交给优化器而 agent 只做特征工程、分数段覆盖、内网只有 OpenAI 格式接口时的框架选型。
 - `claude/autoresearch/pi框架可行性评估.md`：pi 编程 agent 与 pi-autoresearch 用于该循环的可行性、配置示意与实测清单。
+- `claude/npv_ar/`：autoresearch 骨架（pi v1.3.0 + 冻结 harness）：`harness/run.py` 两道关评估与自动保留/回退、`pi/guard.ts` 守卫扩展、`run_once.sh`/`loop.sh`、假模型服务与合成数据工具、单元测试。运行方式见其 README.md；需与 `npv_py`、`npv_lab` 同级。
 
 快速验证（纯标准库，Python 3.8+）：
 
@@ -23,4 +24,5 @@
 cd npv/claude/npv_py && python -m unittest discover -s tests
 cd ../npv_lab && python -m unittest discover -s tests
 cd ../npv_exact && python -m unittest test_exact
+cd ../npv_ar && python3 tools/prepare_synthetic.py && python -m unittest discover -s tests
 ```

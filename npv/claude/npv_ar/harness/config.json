@@ -1,0 +1,15 @@
+{
+  "region": "zh",
+  "score_timeout_sec": 180,
+  "cv_folds": 5,
+  "dev_budget": 300,
+  "eps_floor": 0.002,
+  "cv_gain_min": 0.002,
+  "cv_tol": 0.002,
+  "guard_tol": 0.01,
+  "domain_literal_limit": 20,
+  "list_lines_limit": 200,
+  "max_turns_hint": 30,
+  "score_command_prefix": [],
+  "private_dir": "../npv_ar_private"
+}

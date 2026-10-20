@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+runs/*/npv_ori.tsv
+runs/best
+.pi/
+.DS_Store

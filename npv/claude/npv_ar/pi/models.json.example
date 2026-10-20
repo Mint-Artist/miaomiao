@@ -1,0 +1,19 @@
+{
+  "$schema": "https://pi.dev/schemas/models.schema.json",
+  "providers": {
+    "intranet": {
+      "baseUrl": "http://内网网关/v1",
+      "api": "openai-completions",
+      "apiKey": "$INTRANET_KEY",
+      "compat": {
+        "supportsStore": false,
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        { "id": "模型名", "contextWindow": 131072, "maxTokens": 8192 }
+      ]
+    }
+  }
+}
