@@ -26,6 +26,7 @@ agent 运行时：pi 编程 agent **v1.3.0**（锁定；`npm i -g @earendil-work
 | `pi/guard.ts` | 人 | pi 扩展：路径守卫、`run_eval` 与 `show_errors` 工具、轮数上限 |
 | `pi/run_once.sh`、`pi/loop.sh` | 人 | 跑一轮 / 无人值守循环 |
 | `tools/prepare_synthetic.py` | 人 | 用 npv_py 的合成样例生成快照与标签，只为跑通流程 |
+| `tools/judge_pairs.py` | 人 | 大模型判官标签流水线：抽头尾对、两种顺序 × 两轮判定、一致性过滤、按 qid 切分、单页档位 |
 | `tools/probe_llm.py` | 人 | 探测模型接口：连通、工具调用（非流式/流式）、工具结果回传、compat 字段，打印 models.json 建议 |
 | `tools/mock_llm_server.py` | 人 | 按脚本返回工具调用的假模型服务（normal / cheat / echo 三场景），用于不接真实模型时测试 |
 | `results.tsv`、`runs/`、`harness/state.json` | run.py | 实验记录。`runs/<id>/card.json` 是评估前写下的实验卡 |
@@ -74,6 +75,25 @@ python3 tools/probe_llm.py --base http://内网网关/v1 --key "$KEY" --model �
 纯标准库，依次检查：`/models` 连通、文本回复、非流式工具调用、**流式工具调用（pi 用的路径）**、工具结果回传、以及 pi 默认会发的 `store`、`developer` 角色、`max_completion_tokens`、`reasoning_effort` 服务端是否接受。结束时直接打印该写进 `~/.pi/agent/models.json` 的 provider 配置（含 `compat`）。第 3、4 项不过，pi 就用不了，要让部署方开启服务端工具调用（vLLM：`--enable-auto-tool-choice --tool-call-parser <与模型匹配>`），或改用自写驱动。
 
 本机自测：`python3 tools/mock_llm_server.py --scenario echo --port 8787 &` 再对 `http://127.0.0.1:8787/v1` 跑一遍，7 项应全部 PASS。
+
+## 用大模型判官造标签（`tools/judge_pairs.py`）
+
+输入 `pages.jsonl`：每行一个检索结果页，字段 `qid, query, rank, url, title, text`（正文纯文本，去掉导航页脚），可选 `date, author, vertical`。四步：
+
+```bash
+T=tools/judge_pairs.py
+python3 $T sample --pages pages.jsonl --out work/todo.jsonl --per-query 1 --require-text   # top1-10 抽一页、top11-20 抽一页，随机决定谁是 A
+python3 $T prompt --todo work/todo.jsonl --index 0 [--blind]                               # 先看一眼 prompt
+python3 $T judge  --todo work/todo.jsonl --out work/judgments.jsonl --base http://内网网关/v1 --key $KEY --model 判官模型 --workers 8 --limit 300
+python3 $T build  --judgments work/judgments.jsonl --todo work/todo.jsonl --out work/labels
+python3 $T split  --labels work/labels --out-train harness/labels/train --out-dev harness/labels/dev --out-holdout ../npv_ar_private/holdout
+```
+
+- `judge` 每对调 4 次：带域名 × (AB, BA) 与遮域名 × (AB, BA)；temperature 0；追加写、可续跑；原始 JSON 全部保留在 `judgments.jsonl`。
+- `build`：两种顺序结论相反的对剔除，一次 tie 一次有偏向记为 tie；任一页不切题或相关性差 2 档的对剔除；`stats.json` 里有顺序一致率与 tie 率，这是判官质量的第一个信号。
+- `split` 按 qid 切；遮域名一轮只进 dev 作护栏。
+- 单页绝对档位：`python3 $T grade --pages pages.jsonl --rank-min 21 --rank-max 50 --out work/grades.jsonl --grades-tsv harness/labels/dev/grades.tsv ...`。
+- 本机自测：`python3 tools/mock_llm_server.py --scenario judge --port 8787 &`，假判官按稳定哈希判，顺序一致率应为 1.0。
 
 ## 接真实数据与内网模型
 

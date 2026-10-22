@@ -4,6 +4,7 @@
   python tools/mock_llm_server.py --scenario normal --port 8787
   python tools/mock_llm_server.py --scenario cheat  --port 8787
   python tools/mock_llm_server.py --scenario echo   --port 8787   # 听话模型，用于 probe_llm.py 自测
+  python tools/mock_llm_server.py --scenario judge  --port 8787   # 假判官，用于 judge_pairs.py 自测
 
 第 n 步返回什么，由请求里已有的 tool 结果条数决定。支持流式与非流式。
 """
@@ -60,6 +61,31 @@ SCENARIOS = {
 }
 
 
+def judge_step(msgs):
+    """judge 场景：假判官。按两页 URL 的稳定哈希决定胜负（gov/edu 站加分），交换顺序结论一致，用于 judge_pairs.py 自测。"""
+    import hashlib
+    text = str((msgs[-1] if msgs else {}).get("content") or "")
+    paths = re.findall(r"URL 路径：(\S+)", text)
+    hosts = re.findall(r"站点：(\S+)", text)
+    if len(paths) == 2:
+        def score(i):
+            h = int(hashlib.sha1(paths[i].encode()).hexdigest()[:6], 16) % 100
+            host = hosts[i] if i < len(hosts) else ""
+            return h + (40 if ("gov" in host or "edu" in host) else 0) - (30 if "/u/" in paths[i] or "/user/" in paths[i] else 0)
+        sa, sb = score(0), score(1)
+        verdict = "tie" if abs(sa - sb) < 8 else ("a" if sa > sb else "b")
+        out = {"relevance": {"a": 2, "b": 2 if sb % 17 else 1}, "source_credibility": {"a": 3, "b": 3},
+               "expertise": {"a": 3, "b": 3}, "content_quality": {"a": 3, "b": 3},
+               "page_type": {"a": "正文页", "b": "正文页"}, "risk": {"a": ["无"], "b": ["无"]},
+               "verdict": verdict, "confidence": 4, "reason": "假判官"}
+        return {"text": "```json\n" + json.dumps(out, ensure_ascii=False) + "\n```"}
+    if len(paths) == 1:
+        g = int(hashlib.sha1(paths[0].encode()).hexdigest()[:6], 16) % 5
+        return {"text": json.dumps({"relevance": 2, "source_credibility": 3, "expertise": 3, "content_quality": 3,
+                                    "page_type": "正文页", "risk": ["无"], "authority_grade": g, "reason": "假判官"}, ensure_ascii=False)}
+    return {"text": "好"}
+
+
 def echo_step(req, msgs):
     """echo 场景：像一个听话的模型。用于 probe_llm.py 自测。
     - 上一条是工具结果 → 用文字复述它的前 80 个字符；
@@ -103,6 +129,8 @@ class Handler(BaseHTTPRequestHandler):
         n_tool = sum(1 for m in msgs if m.get("role") == "tool")
         if self.scenario == "echo":
             step = echo_step(req, msgs)
+        elif self.scenario == "judge":
+            step = judge_step(msgs)
         else:
             steps = SCENARIOS[self.scenario]
             step = steps[min(n_tool, len(steps) - 1)]
@@ -162,7 +190,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--scenario", choices=sorted(SCENARIOS) + ["echo"], default="normal")
+    p.add_argument("--scenario", choices=sorted(SCENARIOS) + ["echo", "judge"], default="normal")
     p.add_argument("--port", type=int, default=8787)
     a = p.parse_args(argv)
     Handler.scenario = a.scenario
