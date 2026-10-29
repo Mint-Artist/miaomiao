@@ -17,6 +17,7 @@
 - `claude/autoresearch/五个问题的回答与方案修订.md`：标签规模与判官准确率、数值交给优化器而 agent 只做特征工程、分数段覆盖、内网只有 OpenAI 格式接口时的框架选型。
 - `claude/autoresearch/pi框架可行性评估.md`：pi 编程 agent 与 pi-autoresearch 用于该循环的可行性、配置示意与实测清单。
 - `claude/npv_ar/`：autoresearch 骨架（pi v1.3.0 + 冻结 harness）：`harness/run.py` 两道关评估与自动保留/回退、`pi/guard.ts` 守卫扩展、`run_once.sh`/`loop.sh`、假模型服务与合成数据工具、单元测试。运行方式见其 README.md；需与 `npv_py`、`npv_lab` 同级。
+- `claude/npv_ar_min/`：薄版本 autoresearch（Karpathy 原版玩法）：`program.md` + 冻结的 `eval.py` + `sandbox/`，agent 自己做 git 与记录，用 opencode/codeagent 驱动；`tools/convert_labels.py` 把判官产物 `labeled_*.jsonl` 转成 pairs.tsv 并出统计。复用 `npv_ar/harness`。
 
 快速验证（纯标准库，Python 3.8+）：
 

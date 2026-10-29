@@ -1,0 +1,35 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "*": "deny",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "edit": {
+      "*": "deny",
+      "sandbox/*": "allow",
+      "sandbox/**": "allow",
+      "results.tsv": "allow",
+      "journal.md": "allow"
+    },
+    "bash": {
+      "*": "deny",
+      "python eval.py": "allow",
+      "python3 eval.py": "allow",
+      "git status": "allow",
+      "git status *": "allow",
+      "git log *": "allow",
+      "git diff *": "allow",
+      "git add sandbox*": "allow",
+      "git add results.tsv*": "allow",
+      "git add journal.md*": "allow",
+      "git commit *": "allow",
+      "git reset --hard HEAD~1": "allow",
+      "git checkout -- sandbox*": "allow",
+      "cat results.tsv": "allow",
+      "tail *": "allow",
+      "head *": "allow",
+      "wc *": "allow"
+    }
+  }
+}
