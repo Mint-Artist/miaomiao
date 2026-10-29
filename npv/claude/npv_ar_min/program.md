@@ -8,8 +8,8 @@
 
 ## 文件
 
-- `sandbox/features.py`：特征代码。可以改，可以加新特征。前 6 个基线特征（sr、spr、spr_sr、dr、ow、adc）的计算方式不要改，可以用它们派生新特征。
-- `sandbox/config.json`：`score` 里是打分参数（权重 `fea_weight`、衰减天数、页面类别系数、阈值等），**本版本允许直接改数值**；`fit` 列表里的特征会自动在 train 上拟合权重，想手调就把 `fit` 留空。
+- `sandbox/features.py`：特征代码。可以加新特征、交互项、名单特征，也可以删。只有 `baseline_features` 里那 6 行（sr、spr、spr_sr、dr、ow、adc 的生成）保持原样：这 6 个键要存在，`adc` 的含义不能变（流水线用它决定免降权和加分）。它们的权重、内部参数（spr 的拐点与系数等）都在 `config.json` 里，可以改；由它们派生的新特征随便加。
+- `sandbox/config.json`：`score` 里是全部打分参数：基础分权重 `fea_weight`、spr 拉伸与合成参数（`spr_th1`、`spr_th2`、`spr_coef`、`sr_spr_div`）、衰减天数、正文长度阈值、每条页面类别规则的乘数、保底分、adc 加分与免降权阈值。**本版本允许直接改数值**；`fit` 列表里的特征会自动在 train 上拟合权重，想手调就把 `fit` 留空。
 - `sandbox/lists/*.txt`：可选名单。
 - `eval.py`、`data/`、`labels/`：只读，不要改。
 - `results.tsv`：实验记录，由你追加。
