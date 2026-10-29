@@ -7,8 +7,7 @@
     "grep": "allow",
     "edit": {
       "*": "deny",
-      "sandbox/*": "allow",
-      "sandbox/**": "allow",
+      "sandbox/config.json": "allow",
       "results.tsv": "allow",
       "journal.md": "allow"
     },
@@ -20,7 +19,6 @@
       "git status *": "allow",
       "git log *": "allow",
       "git diff *": "allow",
-      "git add sandbox*": "allow",
       "git add results.tsv*": "allow",
       "git add journal.md*": "allow",
       "git commit *": "allow",
@@ -29,7 +27,9 @@
       "cat results.tsv": "allow",
       "tail *": "allow",
       "head *": "allow",
-      "wc *": "allow"
+      "wc *": "allow",
+      "git add sandbox/config.json": "allow",
+      "git checkout -- sandbox/config.json": "allow"
     }
   }
 }

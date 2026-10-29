@@ -8,32 +8,29 @@
 
 ## 文件
 
-- `sandbox/features.py`：特征代码。可以加新特征、交互项、名单特征，也可以删。只有 `baseline_features` 里那 6 行（sr、spr、spr_sr、dr、ow、adc 的生成）保持原样：这 6 个键要存在，`adc` 的含义不能变（流水线用它决定免降权和加分）。它们的权重、内部参数（spr 的拐点与系数等）都在 `config.json` 里，可以改；由它们派生的新特征随便加。
-- `sandbox/config.json`：`score` 里是全部打分参数：基础分权重 `fea_weight`、spr 拉伸与合成参数（`spr_th1`、`spr_th2`、`spr_coef`、`sr_spr_div`）、衰减天数、正文长度阈值、每条页面类别规则的乘数、保底分、adc 加分与免降权阈值。**本版本允许直接改数值**；`fit` 列表里的特征会自动在 train 上拟合权重，想手调就把 `fit` 留空。
-- `sandbox/lists/*.txt`：可选名单。
-- `eval.py`、`data/`、`labels/`：只读，不要改。
+- `sandbox/config.json`：**本阶段唯一可以改的文件。** `score` 里是全部打分参数：
+  - 基础分权重 `fea_weight`（spr_sr、dr、ow）；
+  - spr 的拉伸与合成参数 `spr_th1`、`spr_th2`、`spr_th1_out`、`spr_th2_out`、`spr_zero_fill`、`spr_coef`、`sr_spr_div`、`sr_missing_score`；
+  - 衰减天数 `pct_decay_days`、`pt_decay_days`；
+  - 正文长度阈值与乘数 `text_len_rules`；
+  - 每条页面类别规则的乘数 `pc_rules[*].factor`、保底分 `pc_floor`；
+  - adc 加分 `adc_bonus`、免降权阈值 `adc_skip_adjust_from`、白名单等级 `adc_whitelist_level`、`max_dr`。
+  只改数值，不要增删键。`fit` 列表保持为空。
+- `sandbox/features.py`：本阶段不改，也没有权限改。
+- `eval.py`、`data/`、`labels/`：只读。
 - `results.tsv`：实验记录，由你追加。
 - `journal.md`：你的研究笔记。
 
-## 规矩
-
-1. `features.py` 只能用标准库的 `math`、`re`、`urllib.parse`，只能读 `x` 的字段（url、adc、pc、pct、pt、pure_text_len、sr、spr）和 `scorer` 的站点表方法。不许读写文件，不许联网。
-2. 不要把错例里看到的具体 URL 或域名写死进代码。名单要按通用标准整理，并把标准写进 `journal.md`。
-3. 一次只改一件事，改动要小，结果要能解释。
-4. 简洁原则：`acc` 持平但代码更简单，也算成功；`acc` 只涨 0.001 却加了二十行代码，不值得。
-5. 只用 `python eval.py`，不要带任何参数。
-6. 不要去找、读、改评估脚本和数据，不要碰 `labels/` 之外的目录。
-
 ## 启动
 
-1. 读 `results.tsv`（如果有）、`journal.md`、`sandbox/features.py`、`sandbox/config.json`。
+1. 读 `results.tsv`（如果有）、`journal.md`、`sandbox/config.json`；可以读 `sandbox/features.py` 了解每个特征是什么，但不要改它。
 2. 第一次运行先跑基线：不改任何东西，`python eval.py`，把结果作为第一行写进 `results.tsv`，状态 `baseline`。
 3. `git log --oneline -3` 确认当前提交。
 
 ## 每一轮
 
 1. 想一个假设，在 `journal.md` 追加一行："#序号 假设：……；预期：……"。
-2. 修改 `sandbox/` 下的文件。
+2. 修改 `sandbox/config.json`。
 3. `git add sandbox && git commit -m "描述"`。
 4. `python eval.py`，读那一行输出。
 5. 判断：
@@ -46,12 +43,13 @@
 ## 没想法时
 
 - 看 `results.tsv` 里接近门槛的尝试，组合它们。
-- 加一个 URL 形态特征（列表页、用户页、根路径、路径深度），或者把 `pc` 的某一位拆成独立特征，加进 `fit` 列表让它自动定权重。
-- 试着删掉作用小的特征或规则，看能否更简单而持平。
-- 改一个乘法参数（衰减天数、页面类别系数、正文长度阈值），一次只改一个。
+- 三个基础分权重的相对比例：spr_sr 占了绝大部分，试试把 dr、ow 的份额提高。
+- 乘法链：衰减天数放长（评估不看新旧）、用户页和列表页的乘数降低、`adc_skip_adjust_from` 调高（让权威站的列表页也受页面级降权）。
+- spr 的拐点与系数：`spr_th1`、`spr_th2`、`spr_coef`。
+- 把某个乘数改回 1.0，看它到底有没有用。
 
 ## 不要做
 
 - 不要为了同档数增加而把分数压扁：`ties` 大幅上升而 `acc` 上涨，不算改进，回退。
 - 不要让某些页面打分失败来提高 `acc`：`missing` 上升就回退。
-- 不要修改 `eval.py`、`data/`、`labels/`。
+- 不要修改 `eval.py`、`data/`、`labels/`、`sandbox/features.py`。
