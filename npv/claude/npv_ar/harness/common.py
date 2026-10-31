@@ -48,6 +48,14 @@ def load_sandbox_config(path: str) -> Tuple[ScoreConfig, List[str]]:
     return config_from_dict(d["score"]), list(fit)
 
 
+def read_sandbox_options(path: str) -> dict:
+    """sandbox/config.json 里除 fit/score 之外的开关。目前只有 linear_only：True 时分数 = 基础分（纯加法公式），
+    不再乘衰减、页面类别、正文长度系数，也不加 adc 加分。"""
+    with open(path, encoding="utf-8") as f:
+        d = json.load(f)
+    return {"linear_only": bool(d.get("linear_only", False))}
+
+
 def save_sandbox_config(cfg: ScoreConfig, fit: Sequence[str], path: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"fit": list(fit), "score": config_to_dict(cfg)}, f, ensure_ascii=False, indent=2)
@@ -66,9 +74,17 @@ def load_features_module(path: str):
 class SandboxScorer(PageValueScore):
     """用 sandbox/features.py 生成特征，其余流水线沿用冻结基线。"""
 
-    def __init__(self, tables, now_seconds: int, config: ScoreConfig, feature_module):
+    def __init__(self, tables, now_seconds: int, config: ScoreConfig, feature_module, linear_only: bool = False):
         super().__init__(tables, now_seconds, config)
         self.fm = feature_module
+        self.linear_only = linear_only
+
+    def score(self, x: ScoreInput, site_list: Sequence[str]):
+        if not self.linear_only:
+            return super().score(x, site_list)
+        f = self.gen_features(x, site_list)
+        from npv.scorer import ScoreResult
+        return ScoreResult(score=self.basic_score(f), features=f)
 
     def gen_features(self, x: ScoreInput, site_list: Sequence[str]) -> Dict[str, float]:
         return self.fm.gen_features(self, x, site_list)
@@ -78,14 +94,14 @@ class SandboxScorer(PageValueScore):
         return max(0.0, sum(f.get(k, 0.0) * w for k, w in self.cfg.fea_weight.items()))
 
     def with_weights(self, w: Dict[str, float]) -> "SandboxScorer":
-        return SandboxScorer(self.t, self.now, replace(self.cfg, fea_weight=dict(w)), self.fm)
+        return SandboxScorer(self.t, self.now, replace(self.cfg, fea_weight=dict(w)), self.fm, self.linear_only)
 
 
-def build_scorer(snapshot_dir: str, cfg: ScoreConfig, feature_module, region: str, now: int):
+def build_scorer(snapshot_dir: str, cfg: ScoreConfig, feature_module, region: str, now: int, linear_only: bool = False):
     paths = {k: os.path.join(snapshot_dir, v) for k, v in TABLE_FILES.items()}
     tables = load_tables(paths["spr"], paths["dr_site"], paths["dr_suffix"], paths["ow"],
                          paths["ow_blacklist"], paths["adc_whitelist"])
-    return SandboxScorer(tables, now, cfg, feature_module), tuple(region_site_list(region))
+    return SandboxScorer(tables, now, cfg, feature_module, linear_only), tuple(region_site_list(region))
 
 
 def baseline_scorer(snapshot_dir: str, region: str, now: int):

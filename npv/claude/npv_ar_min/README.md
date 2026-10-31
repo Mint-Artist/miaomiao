@@ -17,8 +17,22 @@
 | `results.tsv`、`journal.md` | agent | 实验记录与笔记 |
 | `opencode.json` | 人 | 权限：只能改 `sandbox/`、`results.tsv`、`journal.md`；bash 只放行 `python eval.py` 和少数 git 命令 |
 | `run_once.sh`、`loop.sh` | 人 | 跑一个会话 / 反复跑 |
+| `tools/fit_formula.py`、`tools/features_v2.py` | 人 | 用偏序标签拟合加法公式：特征表导出、L1 稀疏、项数-一致率曲线、Java 伪代码 |
 | `tools/convert_labels.py` | 人 | 把 gemini 判官的 `labeled_*.jsonl` 转成 `pairs.tsv`，顺便出标签统计、URL 清单、线上 npv 表 |
 | `tools/prepare_synthetic.py` | 人 | 合成数据，只为跑通 |
+
+## 最短路径：先用拟合替掉手定权重（`tools/fit_formula.py`）
+
+```bash
+python3 tools/fit_formula.py --data data --train labels/train/pairs.tsv --test ../npv_ar_private/min_test/pairs.tsv \
+    --out work/fit --features-out work/features.tsv --drop-decay
+```
+
+- 用 `tools/features_v2.py` 给每页算约 30 列（6 个基线特征、pc 14 位各自独立、正文长度对数与分档、距今年数、URL 形态），`--features-out` 导出的表可直接喂 xgboost。
+- 偏序逻辑回归拟合加法公式 `score = max(0, Σ w·f)`，一组 L1 强度给出"项数 对 一致率"曲线，自动选离最高值 0.3 个点以内最稀疏的那条；打印权重、符号检查、Java 伪代码。
+- `--drop-decay` 把 pct/pt 的时效项排除在权威分之外（LLM 不看新旧；时效在线上单独乘回去）。
+- 复现到 `eval.py`：`sandbox/features.py` 换成 `tools/features_v2.py`，`config.json` 里 `fea_weight` 用 `work/fit/fea_weight.json`、`fit` 置空、加 `"linear_only": true`。两边的数字应完全一致（合成数据上已核对）。
+- `linear_only=true` 时 `eval.py` 输出 `form=linear`：分数就是加法公式本身，不再乘衰减、页面类别、正文长度系数。
 
 ## 评估口径
 

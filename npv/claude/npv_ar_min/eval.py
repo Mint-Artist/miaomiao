@@ -12,6 +12,7 @@
     {"unit": "level", "value": 50}  → 先用 data/level_map.tsv 把原始分映射到线上 1~1000 等级，再比等级差
     {"unit": "raw",   "value": 0}   → 直接比原始分（0 表示只有完全相等才算同档）
 - hard：分差 ≤ 2×band（band=0 时取原始分 2 分）的"难对"上的一致率，防止只在容易的对上刷分
+- form=linear 表示 config.json 里 linear_only=true：分数就是加法公式本身，不再乘衰减与页面类别系数
 - fit=on 表示 config.json 的 fit 列表非空，权重在 labels/train 上拟合过，acc 是样本内数字，偏乐观
 """
 import argparse
@@ -22,7 +23,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 AR_HARNESS = os.path.join(os.path.dirname(HERE), "npv_ar", "harness")
 sys.path.insert(0, AR_HARNESS)
-from common import build_scorer, iter_input, load_features_module, load_sandbox_config, read_pairs  # noqa: E402
+from common import build_scorer, iter_input, load_features_module, load_sandbox_config, read_pairs, read_sandbox_options  # noqa: E402
 from metrics import complexity  # noqa: E402
 from score import fit_weights  # noqa: E402
 from npv.level_map import LevelMap  # noqa: E402
@@ -74,8 +75,9 @@ def main(argv=None):
         lm = LevelMap.load(lm_path)
 
     cfg, fit_names = load_sandbox_config(os.path.join(SANDBOX, "config.json"))
+    opts = read_sandbox_options(os.path.join(SANDBOX, "config.json"))
     fm = load_features_module(os.path.join(SANDBOX, "features.py"))
-    scorer, site_list = build_scorer(DATA, cfg, fm, meta["region"], int(meta["now"]))
+    scorer, site_list = build_scorer(DATA, cfg, fm, meta["region"], int(meta["now"]), opts["linear_only"])
     rows = list(iter_input(os.path.join(DATA, "input.tsv")))
     pairs = read_pairs(TEST if a.test else TRAIN)
     if fit_names:
@@ -91,7 +93,7 @@ def main(argv=None):
     m = banded_accuracy(scores, pairs, band, hard_gap)
     cx = complexity(os.path.join(SANDBOX, "features.py"), scorer.cfg.fea_weight, len(cfg.pc_rules))
     print(f"{'test_' if a.test else ''}acc={m['acc']:.4f} hard={m['hard']:.4f} ties={m['ties']} missing={m['missing']} "
-          f"n={m['n']} complexity={cx['total']} fit={'on' if fit_names else 'off'} unit={unit} band={band:g}")
+          f"n={m['n']} complexity={cx['total']} fit={'on' if fit_names else 'off'} form={'linear' if opts['linear_only'] else 'chain'} unit={unit} band={band:g}")
 
 
 if __name__ == "__main__":

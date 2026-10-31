@@ -15,7 +15,8 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (BASELINE_FEATURES, baseline_scorer, build_scorer, count_bad_rows, iter_input,  # noqa: E402
-                    load_features_module, load_sandbox_config, read_pairs, format_row, features_json, write_json)
+                    load_features_module, load_sandbox_config, read_pairs, read_sandbox_options, format_row,
+                    features_json, write_json)
 from metrics import strict_pairwise  # noqa: E402
 from lab.fit import fit_pairwise_logistic, rescale_weights  # noqa: E402
 
@@ -62,8 +63,9 @@ def main(argv=None):
     with open(os.path.join(a.snapshot, "meta.json"), encoding="utf-8") as f:
         meta = json.load(f)
     cfg, fit_names = load_sandbox_config(os.path.join(a.sandbox, "config.json"))
+    opts = read_sandbox_options(os.path.join(a.sandbox, "config.json"))
     fm = load_features_module(os.path.join(a.sandbox, "features.py"))
-    scorer, site_list = build_scorer(a.snapshot, cfg, fm, meta["region"], int(meta["now"]))
+    scorer, site_list = build_scorer(a.snapshot, cfg, fm, meta["region"], int(meta["now"]), opts["linear_only"])
     input_path = os.path.join(a.snapshot, "input.tsv")
     rows = list(iter_input(input_path))
     os.makedirs(a.out, exist_ok=True)
