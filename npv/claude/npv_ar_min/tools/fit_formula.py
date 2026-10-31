@@ -37,12 +37,35 @@ class _FM:  # 让 build_scorer 接受一个"模块"
     gen_features = staticmethod(features_v2.gen_features)
 
 
-def load_everything(data_dir):
-    with open(os.path.join(data_dir, "meta.json"), encoding="utf-8") as f:
-        meta = json.load(f)
-    scorer, site_list = build_scorer(data_dir, ScoreConfig(), _FM, meta["region"], int(meta["now"]))
-    rows = list(iter_input(os.path.join(data_dir, "input.tsv")))
-    feats = {x.url: scorer.gen_features(x, site_list) for x, _ in rows}
+def load_feature_table(path):
+    """已有每页特征表时直接读：首行表头，第一列 url，其余列为数值特征。"""
+    feats = {}
+    with open(path, encoding="utf-8") as f:
+        header = f.readline().rstrip("\n").split("\t")
+        cols = header[1:]
+        for line in f:
+            c = line.rstrip("\n").split("\t")
+            if len(c) != len(header):
+                continue
+            row = {}
+            for n, v in zip(cols, c[1:]):
+                try:
+                    row[n] = float(v)
+                except ValueError:
+                    row[n] = 0.0
+            feats[c[0]] = row
+    return feats
+
+
+def load_everything(data_dir, feature_table=None):
+    meta_path = os.path.join(data_dir, "meta.json")
+    meta = json.load(open(meta_path, encoding="utf-8")) if os.path.exists(meta_path) else {"region": "zh", "now": 0}
+    if feature_table:
+        feats = load_feature_table(feature_table)
+    else:
+        scorer, site_list = build_scorer(data_dir, ScoreConfig(), _FM, meta["region"], int(meta["now"]))
+        rows = list(iter_input(os.path.join(data_dir, "input.tsv")))
+        feats = {x.url: scorer.gen_features(x, site_list) for x, _ in rows}
     names = sorted(next(iter(feats.values())).keys())
     tie = meta.get("tie_band") or {"unit": "raw", "value": 0}
     lm = None
@@ -141,6 +164,7 @@ def main(argv=None):
     ap.add_argument("--test", default=None, help="holdout / 测试集 pairs.tsv，只在最后看一次")
     ap.add_argument("--out", required=True)
     ap.add_argument("--features-out", default=None, help="导出每页特征 TSV（url + 各列），给 xgboost 用")
+    ap.add_argument("--feature-table", default=None, help="已有的每页特征 TSV（首列 url，其余数值列）；给了就不从 input.tsv 算特征")
     ap.add_argument("--l1", default="0,0.0005,0.001,0.002,0.005,0.01", help="逗号分隔的 L1 强度列表，画项数-一致率曲线")
     ap.add_argument("--l2", type=float, default=1e-3)
     ap.add_argument("--drop", default="", help="逗号分隔，不参与拟合的特征名，例如 pct_age,pt_age（把时效从权威分里拿掉）")
@@ -149,7 +173,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
 
-    meta, feats, names, band, lm = load_everything(a.data)
+    meta, feats, names, band, lm = load_everything(a.data, a.feature_table)
     drop = {s.strip() for s in a.drop.split(",") if s.strip()}
     if a.drop_decay:
         drop |= {"pct_age", "pt_age", "pct_missing", "pt_missing"}
@@ -167,11 +191,12 @@ def main(argv=None):
     print(f"train 可用对 {len(used)} / {len(train)}，特征 {len(names)} 列，{'numpy' if np is not None else '纯 Python'} 拟合")
 
     # 基线：原公式权重（只 spr_sr/dr/ow）在同一口径下的一致率
-    base_w = [{"spr_sr": 60.0, "dr": 12.0, "ow": 4.0}.get(n, 0.0) for n in names]
-    base_scores = score_pages(feats, names, base_w)
-    bt = strict_acc(base_scores, train, band, lm)["acc"] if used else float("nan")
-    be = strict_acc(base_scores, test, band, lm)["acc"] if test else float("nan")
-    print(f"参考：只用 60/12/4 三项、不乘衰减与页面类别系数时 train={bt:.4f} test={be:.4f}（完整原公式的数用 eval.py 看）")
+    if {"spr_sr", "dr", "ow"} <= set(names):
+        base_w = [{"spr_sr": 60.0, "dr": 12.0, "ow": 4.0}.get(n, 0.0) for n in names]
+        base_scores = score_pages(feats, names, base_w)
+        bt = strict_acc(base_scores, train, band, lm)["acc"] if used else float("nan")
+        be = strict_acc(base_scores, test, band, lm)["acc"] if test else float("nan")
+        print(f"参考：只用 60/12/4 三项、不乘衰减与页面类别系数时 train={bt:.4f} test={be:.4f}（完整原公式的数用 eval.py 看）")
 
     curve = []
     l1s = [float(s) for s in a.l1.split(",") if s.strip()] if np is not None else [0.0]
