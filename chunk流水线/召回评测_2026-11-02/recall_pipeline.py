@@ -53,7 +53,8 @@ RUN_METHODS = ["content_br", "md_struct", "html_struct"]
 # 向量模型
 MODEL_PATH = "/path/to/your/embedding/model"    # 你自己的模型目录
 LOADER = "transformers"                         # "transformers"（AutoModel + 池化）或 "sentence_transformers"
-POOLING = "cls"                                 # "cls" / "mean" / "last"（decoder 类向量模型一般用 last）
+POOLING = "cls"                                 # 只对 LOADER="transformers" 生效："cls" / "mean" / "last"（decoder 类向量模型一般用 last）
+                                                # LOADER="sentence_transformers" 时忽略，池化方式由模型目录里的 1_Pooling/config.json 决定
 QUERY_PREFIX = ""                               # query 前缀，例如 "为这个句子生成表示以用于检索相关文章："
 DOC_PREFIX = ""                                 # chunk 前缀
 MAX_LENGTH = 512                                # 模型截断长度（token）
