@@ -47,7 +47,8 @@ MIN_LEN = 20
 CTX_MAX = 100                                   # 上下文前缀（标题路径）的最大字数
 
 # 要比较的切分方法（定义见第 7 段 METHODS）
-RUN_METHODS = ["content_br", "md_fixed", "md_recursive", "md_struct", "md_struct_ctx", "html_struct", "html_struct_ctx"]
+RUN_METHODS = ["content_br", "md_struct", "html_struct"]
+# 暂不使用（定义仍保留在 METHODS 里，需要时加回上面即可）："md_fixed", "md_recursive", "md_struct_ctx", "html_struct_ctx"
 
 # 向量模型
 MODEL_PATH = "/path/to/your/embedding/model"    # 你自己的模型目录
