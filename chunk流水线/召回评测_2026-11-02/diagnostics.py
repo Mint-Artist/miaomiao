@@ -9,7 +9,9 @@
 #   诊断 4：更严格的标准答案（只取精排前 3 / 前 5）—— 看标准答案噪声对结论的影响
 #   诊断 5：按每个标准答案网页自己的结构类型分组 —— 比诊断 3 更准
 #   诊断 6：html 切不出块的标准答案网页，html 字段是什么样 —— 区分"数据缺失"与"解析问题"
-# 诊断 4–6 依赖诊断 3 定义的 GOLD_SOURCES、gold、kind，须先运行诊断 3。
+#   诊断 7：只看 html 有内容的标准答案网页，html_struct 分别对比 content_br 和 md_struct（块长接近）—— 排除 html 数据缺失后，
+#           检验 html 在有结构网页上的提升是否来自结构
+# 诊断 4–7 依赖诊断 3 定义的 GOLD_SOURCES、gold、kind，须先运行诊断 3；诊断 7 还依赖诊断 5 的 rk、bd 和诊断 6 的 zero_html。
 # 用法：把下面各段贴进 notebook 的新单元格（或在 notebook 里 %run -i diagnostics.py）。
 
 # %% 诊断 1：按网页去重后的召回
@@ -172,3 +174,26 @@ for pat in GOLD_SOURCES:
 print(f"html 切不出块的标准答案网页 {len(zero_html)} 个：", dict(cnt))
 for s in samples:  # 大多数是"html 有内容"时，说明是解析问题，把这几条样例发出来看
     print(s)
+
+# %% 诊断 7：只看 html 有内容的标准答案网页，html_struct 直接对比 md_struct（两者块长接近）
+for base in ("content_br", "md_struct"):
+    print(f"\n===== 基线：{base}（排除 html 切不出块的 {len(zero_html)} 个网页）=====")
+    for g in ("表格", "标题列表", "纯文本"):
+        res = {m: {"3000字内召回": [], "前10网页召回": []} for m in RUN_METHODS}
+        for i, q in enumerate(queries):
+            us = {u for u in q["rel"] if kind.get(u, "纯文本") == g and u not in zero_html}
+            if us:
+                for m in RUN_METHODS:
+                    res[m]["3000字内召回"].append(len(us & bd[m][i]) / len(us))
+                    res[m]["前10网页召回"].append(len(us & set(rk[m][i][:10])) / len(us))
+        print(f"【{g}网页】涉及 query {len(res[base]['3000字内召回'])} 条")
+        if not res[base]["3000字内召回"]:
+            continue
+        for m in RUN_METHODS:
+            if m == base:
+                continue
+            out = []
+            for key in ("3000字内召回", "前10网页召回"):
+                d, lo, hi = paired_bootstrap(res[m][key], res[base][key])
+                out.append(f"{key} Δ{100 * d:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]")
+            print(f"  {m:12s} vs {base:10s} " + " | ".join(out))
