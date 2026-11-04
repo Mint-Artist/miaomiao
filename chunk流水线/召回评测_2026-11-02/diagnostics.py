@@ -5,6 +5,11 @@
 #   诊断 1：按网页去重后的召回 —— 排除"切得越细，一个网页占越多名额"对 recall@K 的影响
 #   诊断 2：标准答案网页在各方法下被切成什么样 —— 看有没有丢正文、0 块网页、块数分布是否异常
 #   诊断 3：按标准答案网页的结构类型（表格 / 标题列表 / 纯文本）分组的配对比较 —— 区分"结构保护"与"块更短"的收益
+#           （按 query 分组：标准答案里有一个网页带结构就算带结构，比较粗）
+#   诊断 4：更严格的标准答案（只取精排前 3 / 前 5）—— 看标准答案噪声对结论的影响
+#   诊断 5：按每个标准答案网页自己的结构类型分组 —— 比诊断 3 更准
+#   诊断 6：html 切不出块的标准答案网页，html 字段是什么样 —— 区分"数据缺失"与"解析问题"
+# 诊断 4–6 依赖诊断 3 定义的 GOLD_SOURCES、gold、kind，须先运行诊断 3。
 # 用法：把下面各段贴进 notebook 的新单元格（或在 notebook 里 %run -i diagnostics.py）。
 
 # %% 诊断 1：按网页去重后的召回
@@ -87,3 +92,83 @@ for g in ("表格", "标题列表", "纯文本"):
             d, lo, hi = paired_bootstrap(a, b)
             out.append(f"{k} {np.mean(a):.4f} Δ{100 * d:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]")
         print(f"  {m:12s} " + " | ".join(out))
+
+# %% 诊断 4：更严格的标准答案（只取精排前 3 / 前 5）
+# 前提：query 文件里的 url 按精排名次从高到低排列（relevant_urls 的顺序 / relevance 的键顺序）
+for k in (3, 5):
+    qk = [{**q, "rel": dict(list(q["rel"].items())[:k])} for q in queries]
+    per = {m: [url_metrics(idx, gids[i], q["rel"]) for i, q in enumerate(qk)] for m, (idx, _, gids) in hits.items()}
+    print(f"\n标准答案 = 精排前 {k}")
+    for m in RUN_METHODS:
+        out = []
+        for key in ("MRR", "hit@10", "hit@3000字"):
+            a = [r[key] for r in per[m]]
+            b = [r[key] for r in per[BASELINE_METHOD]]
+            d, lo, hi = paired_bootstrap(a, b)
+            out.append(f"{key} {np.mean(a):.4f} Δ{100 * d:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]")
+        print(f"  {m:12s} " + " | ".join(out))
+
+# %% 诊断 5：按每个标准答案网页自己的结构类型分组（3000 字预算内 / 前 10 个网页内能召回该类网页的比例）
+
+
+def pages_of(idx, row, budget=None):
+    """检索结果按网页去重后的顺序；给 budget 时只看累计字数在预算内的 chunk（至少一个，与 hit@N字 一致）。"""
+    seen, out, tot = set(), [], 0
+    for g in row:
+        if g < 0:
+            break
+        tot += idx.chunk_len(int(g))
+        if budget and tot > budget and out:
+            break
+        u = norm_url(idx.url(int(g)))
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
+rk = {m: [pages_of(idx, gids[i]) for i in range(len(queries))] for m, (idx, _, gids) in hits.items()}
+bd = {m: [set(pages_of(idx, gids[i], 3000)) for i in range(len(queries))] for m, (idx, _, gids) in hits.items()}
+for g in ("表格", "标题列表", "纯文本"):
+    res = {m: {"3000字内召回": [], "前10网页召回": []} for m in RUN_METHODS}
+    for i, q in enumerate(queries):
+        us = {u for u in q["rel"] if kind.get(u, "纯文本") == g}
+        if us:  # 每条 query 只算它自己这一类标准答案网页的召回比例，再按 query 配对比较
+            for m in RUN_METHODS:
+                res[m]["3000字内召回"].append(len(us & bd[m][i]) / len(us))
+                res[m]["前10网页召回"].append(len(us & set(rk[m][i][:10])) / len(us))
+    print(f"\n【{g}网页】涉及 query {len(res[RUN_METHODS[0]]['3000字内召回'])} 条")
+    if not res[RUN_METHODS[0]]["3000字内召回"]:
+        continue
+    for m in RUN_METHODS:
+        out = []
+        for key in ("3000字内召回", "前10网页召回"):
+            d, lo, hi = paired_bootstrap(res[m][key], res[BASELINE_METHOD][key])
+            out.append(f"{key} {np.mean(res[m][key]):.4f} Δ{100 * d:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]")
+        print(f"  {m:12s} " + " | ".join(out))
+
+# %% 诊断 6：html 切不出块的标准答案网页，html 字段是什么样
+import collections
+
+zero_html = set()
+idx = hits["html_struct"][0]
+for p, name in enumerate(idx.names):
+    offs = idx.offsets[p]
+    with open(os.path.join(idx.cdir, name + ".urls.txt"), encoding="utf-8") as f:
+        for d, u in enumerate(f.read().split("\n")[: len(offs) - 1]):
+            if offs[d + 1] == offs[d] and norm_url(u) in gold:
+                zero_html.add(norm_url(u))
+cnt, samples, seen6 = collections.Counter(), [], set()
+for pat in GOLD_SOURCES:
+    for p in list_parts(pat):
+        for rec in iter_records(p):
+            u = norm_url(rec.get("url") or "")
+            if u in zero_html and u not in seen6:  # 同一网页可能在多个来源里出现，只数一次
+                seen6.add(u)
+                h = rec.get("html") or ""
+                cnt["html 为空" if not h.strip() else "html 很短（<200 字符）" if len(h) < 200 else "html 有内容"] += 1
+                if h.strip() and len(samples) < 3:
+                    samples.append((rec["url"], len(h), h[:300]))
+print(f"html 切不出块的标准答案网页 {len(zero_html)} 个：", dict(cnt))
+for s in samples:  # 大多数是"html 有内容"时，说明是解析问题，把这几条样例发出来看
+    print(s)
