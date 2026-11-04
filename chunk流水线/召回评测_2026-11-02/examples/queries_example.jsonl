@@ -1,0 +1,2 @@
+{"qid": "q1", "query": "线上检索时的 query 原文", "relevant_urls": ["https://example.com/rank1", "https://example.com/rank2", "https://example.com/rank3", "https://example.com/rank4", "https://example.com/rank5", "https://example.com/rank6", "https://example.com/rank7", "https://example.com/rank8", "https://example.com/rank9", "https://example.com/rank10"]}
+{"qid": "q2", "query": "另一条 query 原文", "relevant_urls": ["https://example.org/a", "https://example.org/b"]}

@@ -1,0 +1,2 @@
+{"qid": "q1", "query": "线上检索时的 query 原文", "relevance": {"https://example.com/rank1": 2, "https://example.com/rank2": 2, "https://example.com/rank3": 2, "https://example.com/rank4": 1, "https://example.com/rank5": 1, "https://example.com/rank6": 1, "https://example.com/rank7": 1, "https://example.com/rank8": 1, "https://example.com/rank9": 1, "https://example.com/rank10": 1}}
+{"qid": "q2", "query": "另一条 query 原文", "relevance": {"https://example.org/a": 2, "https://example.org/b": 1}}
