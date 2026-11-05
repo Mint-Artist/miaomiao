@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>召回结果查看器</title>
 <style>
-:root{--bg:#f6f6f3;--panel:#fff;--fg:#1c1c1a;--muted:#6b6a64;--line:#e2e1da;--accent:#2f6fde;--gold:#1d8f58;--goldbg:#e7f5ec;--same:#fff1c2;--bad:#c94040;--chip:#efeee8;--shadow:0 1px 2px rgba(0,0,0,.05)}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#151514;--panel:#1e1e1c;--fg:#ebeae4;--muted:#9f9d95;--line:#34332e;--accent:#79a3f2;--gold:#45c98b;--goldbg:#16301f;--same:#433a1a;--bad:#ec6d6d;--chip:#2a2a26;--shadow:none}}
-:root[data-theme="dark"]{--bg:#151514;--panel:#1e1e1c;--fg:#ebeae4;--muted:#9f9d95;--line:#34332e;--accent:#79a3f2;--gold:#45c98b;--goldbg:#16301f;--same:#433a1a;--bad:#ec6d6d;--chip:#2a2a26;--shadow:none}
+:root{--bg:#f6f6f3;--panel:#fff;--fg:#1c1c1a;--muted:#6b6a64;--line:#e2e1da;--accent:#2f6fde;--gold:#1d8f58;--goldbg:#e7f5ec;--same:#fff1c2;--bad:#c94040;--chip:#efeee8;--shadow:0 1px 2px rgba(0,0,0,.05);--pin:#e8590c;--pinbg:rgba(232,89,12,.09)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#151514;--panel:#1e1e1c;--fg:#ebeae4;--muted:#9f9d95;--line:#34332e;--accent:#79a3f2;--gold:#45c98b;--goldbg:#16301f;--same:#433a1a;--bad:#ec6d6d;--chip:#2a2a26;--shadow:none;--pin:#ff922b;--pinbg:rgba(255,146,43,.13)}}
+:root[data-theme="dark"]{--bg:#151514;--panel:#1e1e1c;--fg:#ebeae4;--muted:#9f9d95;--line:#34332e;--accent:#79a3f2;--gold:#45c98b;--goldbg:#16301f;--same:#433a1a;--bad:#ec6d6d;--chip:#2a2a26;--shadow:none;--pin:#ff922b;--pinbg:rgba(255,146,43,.13)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--fg);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
@@ -68,6 +68,10 @@ td.best{color:var(--gold);font-weight:600}
 .pg{padding:8px 10px;margin-bottom:8px;border-left:4px solid transparent}
 .pg.g{border-left-color:var(--gold);background:var(--goldbg)}
 .pg.same{outline:2px solid var(--accent);outline-offset:-1px}
+.card.pin{outline:3px solid var(--pin);outline-offset:-2px;box-shadow:inset 0 0 0 9999px var(--pinbg)}
+.pinbar{display:inline-flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:12px;padding:2px 8px;border:1px solid var(--pin);border-radius:6px;color:var(--fg)}
+.pinbar:empty{display:none}.pinbar b{color:var(--pin)}
+.pinbar button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 2px}
 .pg details{margin-top:4px}.pg summary{cursor:pointer;font-size:12px;color:var(--muted)}
 .pg .sub{border-top:1px dashed var(--line);padding-top:4px;margin-top:4px}
 .err{color:var(--bad);white-space:pre-wrap}
@@ -191,6 +195,7 @@ function select(i) {
   document.querySelectorAll(".qi").forEach(el => el.classList.toggle("on", +el.dataset.i === i));
   const el = document.querySelector(`.qi[data-i="${i}"]`); if (el) el.scrollIntoView({block: "nearest"});
   history.replaceState(null, "", "#" + encodeURIComponent(S.qs[i].qid));
+  S.pinU = null;
   renderMain();
 }
 
@@ -212,8 +217,21 @@ function renderMain() {
     <div class="card gold"><h3>标准答案网页</h3>${goldHtml}</div>
     ${mtab ? `<div class="card mtab"><h3>这条 query 的指标（绿色 = 本条最好）</h3>${mtab}</div>` : ""}
     <div class="toolbar"><button class="btn ${S.view === "chunk" ? "on" : ""}" data-v="chunk">按 chunk 排名</button><button class="btn ${S.view === "page" ? "on" : ""}" data-v="page">按网页聚合</button>
-      <button class="btn" id="expand">全部展开 / 收起</button><span class="meta">绿色 = 标准答案网页；鼠标悬停时各列中同一网页会一起高亮；↑↓ 切换 query</span></div>
+      <button class="btn" id="expand">全部展开 / 收起</button><span class="meta">绿色 = 标准答案网页；悬停时各列中同一网页一起高亮（蓝框）；点击卡片固定高亮（橙框），再点一次或按 Esc 取消；↑↓ 切换 query</span><span class="pinbar" id="pinbar"></span></div>
     <div class="cols" style="--n:${ms.length}">${ms.map(m => colHtml(q, m)).join("")}</div>`;
+  S.hoverU = null;
+  applyPin();
+}
+
+function applyPin() {
+  document.querySelectorAll(".pin").forEach(x => x.classList.remove("pin"));
+  const bar = $("pinbar");
+  if (!S.pinU) { if (bar) bar.innerHTML = ""; return; }
+  const els = [...document.querySelectorAll(`[data-u="${CSS.escape(S.pinU)}"]`)];
+  els.forEach(x => x.classList.add("pin"));
+  if (!bar) return;
+  const per = S.meta.methods.map(m => { const n = els.filter(x => x.closest(".col")?.dataset.m === m).length; return `${esc(m)} ${n || "—"}`; }).join(" · ");
+  bar.innerHTML = `<b>已固定</b><span title="${esc(S.pinU)}">${esc(shortUrl(S.pinU))}</span><span class="meta">${S.view === "chunk" ? "各列命中块数" : "各列是否出现"}：${per}</span><button id="unpin" title="取消固定（Esc）">✕</button>`;
 }
 
 function chunkHtml(c, compact) {
@@ -228,14 +246,14 @@ function colHtml(q, m) {
   const met = d.metrics || {};
   const head = `<h3><span>${esc(m)}</span><span class="meta">hit@10 ${fmt("hit@10", met["hit@10"])} · MRR ${fmt("MRR", met.MRR)}</span></h3>`;
   if (S.view === "chunk") {
-    return `<div class="col">${head}${d.chunks.map(c => `<div class="card ck${c.gold ? " g" : ""}" data-u="${esc(c.url)}">${chunkHtml(c)}</div>`).join("") || `<div class="meta">无结果</div>`}</div>`;
+    return `<div class="col" data-m="${esc(m)}">${head}${d.chunks.map(c => `<div class="card ck${c.gold ? " g" : ""}" data-u="${esc(c.url)}">${chunkHtml(c)}</div>`).join("") || `<div class="meta">无结果</div>`}</div>`;
   }
   const pages = [], at = new Map();
   for (const c of d.chunks) {
     if (!at.has(c.url)) { at.set(c.url, pages.length); pages.push({url: c.url, gold: c.gold, items: []}); }
     pages[at.get(c.url)].items.push(c);
   }
-  return `<div class="col">${head}${pages.map((p, j) => {
+  return `<div class="col" data-m="${esc(m)}">${head}${pages.map((p, j) => {
     const href = safeHref(p.url);
     const link = href ? `<a class="u" href="${href}" target="_blank" rel="noopener noreferrer" title="${esc(p.url)}">${esc(shortUrl(p.url))}</a>` : esc(p.url);
     return `<div class="card pg${p.gold ? " g" : ""}" data-u="${esc(p.url)}"><div class="h meta">网页 ${j + 1} · chunk 名次 ${p.items.map(c => "#" + c.rank).join(" ")}${p.gold ? ` · <span class="chip y">标准答案 ${p.gold}</span>` : ""}</div>${link}
@@ -252,7 +270,13 @@ $("main").addEventListener("click", e => {
     document.querySelectorAll(".pg details").forEach(dd => dd.open = open);
     return;
   }
-  if (e.target.classList.contains("more")) { const t = e.target.previousElementSibling; t.classList.toggle("open"); e.target.textContent = t.classList.contains("open") ? "收起" : "展开"; }
+  if (e.target.classList.contains("more")) { const t = e.target.previousElementSibling; t.classList.toggle("open"); e.target.textContent = t.classList.contains("open") ? "收起" : "展开"; return; }
+  if (e.target.closest("#unpin")) { S.pinU = null; applyPin(); return; }
+  if (e.target.closest("a,button,summary,input,select")) return;
+  const c = e.target.closest("[data-u]"); if (!c) return;
+  if (String(window.getSelection?.() || "").trim()) return;  // 在选文字复制，不算点击
+  S.pinU = S.pinU === c.dataset.u ? null : c.dataset.u;
+  applyPin();
 });
 $("main").addEventListener("mouseover", e => {
   const c = e.target.closest("[data-u]"); const u = c ? c.dataset.u : null;
@@ -262,6 +286,7 @@ $("main").addEventListener("mouseover", e => {
 });
 document.addEventListener("keydown", e => {
   if (!S.qs.length || /input|select|textarea/i.test(document.activeElement?.tagName || "")) return;
+  if (e.key === "Escape" && S.pinU) { S.pinU = null; applyPin(); return; }
   if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
   const p = S.shown.indexOf(S.cur), n = p + (e.key === "ArrowDown" ? 1 : -1);
   if (n >= 0 && n < S.shown.length) { e.preventDefault(); select(S.shown[n]); }
