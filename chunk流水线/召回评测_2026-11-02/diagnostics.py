@@ -11,7 +11,10 @@
 #   诊断 6：html 切不出块的标准答案网页，html 字段是什么样 —— 区分"数据缺失"与"解析问题"
 #   诊断 7：只看 html 有内容的标准答案网页，html_struct 分别对比 content_br 和 md_struct（块长接近）—— 排除 html 数据缺失后，
 #           检验 html 在有结构网页上的提升是否来自结构
+#   诊断 8：前排结果里来自随机库（非 inj- 分片）的比例 —— 判断随机库在检索竞争中起多大作用
+#   诊断 9：随机库砍掉一半后重新检索，对比方法间差值 —— 判断结论是否受语料规模影响（会重新检索）
 # 诊断 4–7 依赖诊断 3 定义的 GOLD_SOURCES、gold、kind，须先运行诊断 3；诊断 7 还依赖诊断 5 的 rk、bd 和诊断 6 的 zero_html。
+# 诊断 8、9 只依赖第 14 段的 hits / queries，可单独运行。
 # 用法：把下面各段贴进 notebook 的新单元格（或在 notebook 里 %run -i diagnostics.py）。
 
 # %% 诊断 1：按网页去重后的召回
@@ -197,3 +200,24 @@ for base in ("content_br", "md_struct"):
                 d, lo, hi = paired_bootstrap(res[m][key], res[base][key])
                 out.append(f"{key} Δ{100 * d:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]")
             print(f"  {m:12s} vs {base:10s} " + " | ".join(out))
+
+# %% 诊断 8：前排结果里来自随机库的比例（直接用 hits，不重新检索）
+# 很低（如 top-10 < 5%）：竞争几乎都在补入的相关网页之间，再加随机网页结果几乎不变
+# 明显（如 top-10 > 20%）：随机网页确实在干扰，库的规模有影响，再看诊断 9
+for m, (idx, _, gids) in hits.items():
+    for k in (10, 100):
+        is_rand = [not idx.names[idx.locate(int(g))[0]].startswith("inj-") for row in gids for g in row[:k] if g >= 0]
+        print(f"{m:12s} top-{k:<3d} 个 chunk 中来自随机库的比例 {np.mean(is_rand):.1%}")
+
+# %% 诊断 9：随机库砍掉一半后重新检索，对比方法间差值（每种方法重新扫一遍向量）
+# 补入网页（inj- 分片）全保留，随机库只留编号为偶数的分片；少量在随机库里的标准答案会一起被去掉，所以只比 Δ 列
+import re
+
+half = lambda n: n.startswith("inj-") or int(re.sub(r"\D", "", n) or 0) % 2 == 0
+s_half, _ = evaluate(RUN_METHODS, queries, select=half)
+_dcols = [c for c in s_half.columns if c.startswith("Δ")]
+print("随机库一半：")
+print(s_half[_dcols].to_string())
+if "summary" in globals() and summary is not None:
+    print("全量（第 14 段）：")
+    print(summary[_dcols].to_string())
