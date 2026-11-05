@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>召回结果查看器</title>
+<style>
+:root{--bg:#f6f6f3;--panel:#fff;--fg:#1c1c1a;--muted:#6b6a64;--line:#e2e1da;--accent:#2f6fde;--gold:#1d8f58;--goldbg:#e7f5ec;--same:#fff1c2;--bad:#c94040;--chip:#efeee8;--shadow:0 1px 2px rgba(0,0,0,.05)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#151514;--panel:#1e1e1c;--fg:#ebeae4;--muted:#9f9d95;--line:#34332e;--accent:#79a3f2;--gold:#45c98b;--goldbg:#16301f;--same:#433a1a;--bad:#ec6d6d;--chip:#2a2a26;--shadow:none}}
+:root[data-theme="dark"]{--bg:#151514;--panel:#1e1e1c;--fg:#ebeae4;--muted:#9f9d95;--line:#34332e;--accent:#79a3f2;--gold:#45c98b;--goldbg:#16301f;--same:#433a1a;--bad:#ec6d6d;--chip:#2a2a26;--shadow:none}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+button,select,input{font:inherit;color:inherit}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:16px;margin:0;font-weight:600}
+.meta{color:var(--muted);font-size:12.5px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:4px 10px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#app{display:grid;grid-template-columns:320px 1fr;height:calc(100% - 53px)}
+#side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.filters{padding:10px;display:grid;gap:6px;border-bottom:1px solid var(--line)}
+.filters input,.filters select{width:100%;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.row{display:flex;gap:6px;align-items:center}.row>*{flex:1;min-width:0}
+.lbl{font-size:12px;color:var(--muted)}
+#count{font-size:12px;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line)}
+#list{overflow:auto;flex:1}
+.qi{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.qi:hover{background:var(--bg)}.qi.on{background:var(--same)}
+.qi .qt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.qi .qm{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;font-size:11.5px;color:var(--muted)}
+.dot{display:inline-flex;align-items:center;gap:3px;padding:0 5px;border-radius:9px;background:var(--chip)}
+.dot.y{color:var(--gold)}.dot.n{color:var(--bad)}
+#main{overflow:auto;padding:14px 16px;min-width:0}
+.empty{color:var(--muted);padding:40px 10px;text-align:center}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:40px 16px;text-align:center;color:var(--muted);margin:20px auto;max-width:640px}
+.drop.over{border-color:var(--accent);color:var(--accent)}
+.qhead h2{font-size:18px;margin:0 0 4px}
+.qhead .meta{margin-bottom:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+.gold{padding:8px 12px;margin-bottom:12px}
+.gold h3,.mtab h3{font-size:13px;margin:0 0 6px;color:var(--muted);font-weight:600}
+.gl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;font-size:12.5px;align-items:center}
+.gl .u{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chips{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.chip{padding:0 6px;border-radius:9px;background:var(--chip);font-size:11.5px;white-space:nowrap}
+.chip.y{color:var(--gold)}.chip.n{color:var(--muted)}
+.mtab{padding:8px 12px;margin-bottom:12px;overflow:auto}
+table{border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{padding:3px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td.best{color:var(--gold);font-weight:600}
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+.cols{display:grid;grid-template-columns:repeat(var(--n),minmax(300px,1fr));gap:12px;align-items:start}
+.col{min-width:0}
+.col h3{font-size:14px;margin:0 0 8px;display:flex;justify-content:space-between;gap:8px;position:sticky;top:-14px;background:var(--bg);padding:6px 0;z-index:1}
+.ck{padding:8px 10px;margin-bottom:8px;border-left:4px solid transparent}
+.ck.g{border-left-color:var(--gold);background:var(--goldbg)}
+.ck.same{outline:2px solid var(--accent);outline-offset:-1px}
+.ck .h{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:12px;color:var(--muted);align-items:center}
+.ck .h b{color:var(--fg)}
+.ck .u{display:block;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:2px 0}
+.t{white-space:pre-wrap;word-break:break-word;font-size:13px;max-height:9.6em;overflow:hidden;position:relative}
+.t.open{max-height:none}
+.more{font-size:12px;color:var(--accent);cursor:pointer;background:none;border:0;padding:0}
+.pg{padding:8px 10px;margin-bottom:8px;border-left:4px solid transparent}
+.pg.g{border-left-color:var(--gold);background:var(--goldbg)}
+.pg.same{outline:2px solid var(--accent);outline-offset:-1px}
+.pg details{margin-top:4px}.pg summary{cursor:pointer;font-size:12px;color:var(--muted)}
+.pg .sub{border-top:1px dashed var(--line);padding-top:4px;margin-top:4px}
+.err{color:var(--bad);white-space:pre-wrap}
+@media (max-width:820px){.gl{grid-template-columns:1fr}.gl .chips{justify-content:flex-start;margin-bottom:6px}#app{grid-template-columns:1fr;height:auto}#side{max-height:45vh;border-right:0;border-bottom:1px solid var(--line)}.cols{grid-template-columns:minmax(0,1fr)}#main{padding:12px 16px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>召回结果查看器</h1>
+  <label class="btn">选择文件<input id="file" type="file" accept=".jsonl,.gz,.json" hidden></label>
+  <span id="fmeta" class="meta">支持 viewer_export.py 导出的 .jsonl / .jsonl.gz；数据只在本地浏览器读取，不会上传</span>
+  <span style="flex:1"></span>
+  <button class="btn" id="theme" title="切换深色 / 浅色">◐</button>
+</header>
+<div id="app">
+  <aside id="side">
+    <div class="filters">
+      <input id="q" placeholder="搜索 query 原文或 qid">
+      <div class="row"><select id="kind"><option value="">全部类型</option><option>表格</option><option>标题列表</option><option>纯文本</option></select>
+        <select id="metric" title="列表里每种方法显示的指标"><option>hit@10</option><option>hit@3000字</option><option>hit@1</option><option>MRR</option></select></div>
+      <div class="lbl">对比筛选（按上面选的指标）</div>
+      <div class="row"><select id="ma"></select><select id="cmp"><option value="">不筛选</option><option value="gt">优于</option><option value="lt">差于</option><option value="eq">持平</option></select><select id="mb"></select></div>
+    </div>
+    <div id="count"></div>
+    <div id="list"></div>
+  </aside>
+  <main id="main"><div class="drop" id="drop">把 viewer_export.py 导出的文件拖到这里，或点左上角"选择文件"<br><span class="meta">也可以用 ?data=文件地址 打开（需通过 http 访问本页面）</span></div></main>
+</div>
+<script>
+"use strict";
+const S = {meta: null, qs: [], shown: [], cur: -1, view: "chunk"};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const safeHref = u => /^https?:\/\//i.test(u || "") ? esc(u) : "";
+const shortUrl = u => String(u || "").replace(/^https?:\/\/(www\.)?/i, "");
+const fmt = (k, v) => v == null ? "—" : (k === "MRR" || k.startsWith("recall") || k.startsWith("nDCG") ? v.toFixed(3) : (v >= 1 ? "✓" : "✗"));
+
+try { const t = localStorage.getItem("rv-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+$("theme").onclick = () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+  const nxt = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = nxt;
+  try { localStorage.setItem("rv-theme", nxt); } catch (e) {}
+};
+
+async function readText(blobOrResp, name) {
+  if (/\.gz$/i.test(name)) {
+    if (typeof DecompressionStream === "undefined") throw new Error("当前浏览器不支持解压 .gz，请先解压成 .jsonl 再打开");
+    const body = blobOrResp.body || blobOrResp.stream();
+    return await new Response(body.pipeThrough(new DecompressionStream("gzip"))).text();
+  }
+  return await blobOrResp.text();
+}
+
+function load(text, name) {
+  const meta = [], qs = [];
+  let bad = 0;
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    let d;
+    try { d = JSON.parse(line); } catch (e) { bad++; continue; }
+    if (d.type === "meta") meta.push(d); else if (d.type === "query") qs.push(d);
+  }
+  if (!meta.length || !qs.length) throw new Error("文件里没有找到查看器数据（需要 viewer_export.py 导出的文件）");
+  S.meta = meta[0]; S.qs = qs; S.cur = -1;
+  const m = S.meta.methods;
+  for (const id of ["ma", "mb"]) $(id).innerHTML = m.map(x => `<option>${esc(x)}</option>`).join("");
+  $("ma").value = m[m.length > 1 ? 1 : 0]; $("mb").value = S.meta.baseline && m.includes(S.meta.baseline) ? S.meta.baseline : m[0];
+  $("fmeta").textContent = `${name} · ${qs.length} 条 query · 方法 ${m.join(" / ")} · 每种方法前 ${S.meta.topn} 个 chunk（命中名次按前 ${S.meta.topk} 个算）· 生成于 ${S.meta.created || "—"}` + (bad ? ` · 跳过坏行 ${bad}` : "");
+  renderList();
+  const want = decodeURIComponent(location.hash.slice(1));
+  const i = want ? S.qs.findIndex(q => q.qid === want) : -1;
+  select(i >= 0 ? i : (S.shown[0] ?? -1));
+}
+
+async function openFile(f) {
+  try { $("fmeta").textContent = `读取 ${f.name} …`; load(await readText(f, f.name), f.name); }
+  catch (e) { showErr(e); }
+}
+function showErr(e) { $("main").innerHTML = `<div class="card" style="padding:14px"><div class="err">${esc(e.message || e)}</div></div>`; $("fmeta").textContent = "加载失败"; }
+
+$("file").onchange = e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; };
+for (const ev of ["dragover", "dragenter"]) document.addEventListener(ev, e => { e.preventDefault(); $("drop")?.classList.add("over"); });
+document.addEventListener("dragleave", () => $("drop")?.classList.remove("over"));
+document.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) openFile(f); });
+
+function val(q, m, k) { const v = q.methods[m]?.metrics?.[k]; return v == null ? null : v; }
+
+function renderList() {
+  const kw = $("q").value.trim().toLowerCase(), kind = $("kind").value, k = $("metric").value;
+  const ma = $("ma").value, mb = $("mb").value, cmp = $("cmp").value;
+  S.shown = [];
+  S.qs.forEach((q, i) => {
+    if (kw && !(q.query.toLowerCase().includes(kw) || String(q.qid).toLowerCase().includes(kw))) return;
+    if (kind && !(q.gold || []).some(g => g.kind === kind)) return;
+    if (cmp) {
+      const a = val(q, ma, k), b = val(q, mb, k);
+      if (a == null || b == null) return;
+      if (cmp === "gt" && !(a > b)) return;
+      if (cmp === "lt" && !(a < b)) return;
+      if (cmp === "eq" && a !== b) return;
+    }
+    S.shown.push(i);
+  });
+  const ms = S.meta.methods;
+  const mean = m => { const xs = S.shown.map(i => val(S.qs[i], m, k)).filter(x => x != null); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; };
+  $("count").innerHTML = `显示 ${S.shown.length} / ${S.qs.length} 条 · 平均 ${esc(k)}：` + ms.map(m => `${esc(m)} ${mean(m) == null ? "—" : mean(m).toFixed(3)}`).join("，");
+  $("list").innerHTML = S.shown.map(i => {
+    const q = S.qs[i];
+    const dots = ms.map(m => { const v = val(q, m, k); const cls = v == null ? "" : (k === "MRR" ? "" : (v >= 1 ? "y" : "n")); return `<span class="dot ${cls}">${esc(m)} ${fmt(k, v)}</span>`; }).join("");
+    return `<div class="qi${i === S.cur ? " on" : ""}" data-i="${i}"><div class="qt">${esc(q.query)}</div><div class="qm"><span>${esc(q.qid)}</span>${q.kind ? `<span>${esc(q.kind)}</span>` : ""}${dots}</div></div>`;
+  }).join("");
+}
+$("list").onclick = e => { const el = e.target.closest(".qi"); if (el) select(+el.dataset.i); };
+for (const id of ["q", "kind", "metric", "ma", "mb", "cmp"]) $(id).addEventListener(id === "q" ? "input" : "change", () => { renderList(); });
+
+function select(i) {
+  if (i == null || i < 0 || !S.qs[i]) { $("main").innerHTML = `<div class="empty">没有符合条件的 query</div>`; return; }
+  S.cur = i;
+  document.querySelectorAll(".qi").forEach(el => el.classList.toggle("on", +el.dataset.i === i));
+  const el = document.querySelector(`.qi[data-i="${i}"]`); if (el) el.scrollIntoView({block: "nearest"});
+  history.replaceState(null, "", "#" + encodeURIComponent(S.qs[i].qid));
+  renderMain();
+}
+
+function renderMain() {
+  const q = S.qs[S.cur], ms = S.meta.methods;
+  const keys = ["MRR", "hit@1", "hit@10", "hit@100", "recall@100", "hit@3000字", "nDCG@10"].filter(k => ms.some(m => val(q, m, k) != null));
+  const best = {};
+  for (const k of keys) best[k] = Math.max(...ms.map(m => val(q, m, k) ?? -1));
+  const gold = (q.gold || []).slice().sort((a, b) => (b.grade - a.grade));
+  const goldHtml = gold.length ? `<div class="gl">${gold.map(g => {
+    const href = safeHref(g.url);
+    const link = href ? `<a href="${href}" target="_blank" rel="noopener noreferrer" title="${esc(g.url)}">${esc(shortUrl(g.url))}</a>` : esc(g.url);
+    const chips = ms.map(m => { const r = g.rank?.[m]; return `<span class="chip ${r ? "y" : "n"}">${esc(m)} ${r ? "#" + r : "—"}</span>`; }).join("");
+    return `<div class="u">相关度 ${esc(g.grade)}${g.kind ? " · " + esc(g.kind) : ""} · ${link}</div><div class="chips">${chips}</div>`;
+  }).join("")}</div>` : `<div class="meta">这条 query 没有标准答案</div>`;
+  const mtab = keys.length ? `<table><tr><th>方法</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}</tr>${ms.map(m => `<tr><td>${esc(m)}</td>${keys.map(k => { const v = val(q, m, k); return `<td class="${v != null && v === best[k] && ms.length > 1 && keys.length ? "best" : ""}">${fmt(k, v)}</td>`; }).join("")}</tr>`).join("")}</table>` : "";
+  $("main").innerHTML = `
+    <div class="qhead"><h2>${esc(q.query)}</h2><div class="meta">${esc(q.qid)}${q.kind ? " · " + esc(q.kind) : ""} · 标准答案网页 ${gold.length} 个（芯片里是各方法下第一次命中的 chunk 名次）</div></div>
+    <div class="card gold"><h3>标准答案网页</h3>${goldHtml}</div>
+    ${mtab ? `<div class="card mtab"><h3>这条 query 的指标（绿色 = 本条最好）</h3>${mtab}</div>` : ""}
+    <div class="toolbar"><button class="btn ${S.view === "chunk" ? "on" : ""}" data-v="chunk">按 chunk 排名</button><button class="btn ${S.view === "page" ? "on" : ""}" data-v="page">按网页聚合</button>
+      <button class="btn" id="expand">全部展开 / 收起</button><span class="meta">绿色 = 标准答案网页；鼠标悬停时各列中同一网页会一起高亮；↑↓ 切换 query</span></div>
+    <div class="cols" style="--n:${ms.length}">${ms.map(m => colHtml(q, m)).join("")}</div>`;
+}
+
+function chunkHtml(c, compact) {
+  const href = safeHref(c.url);
+  const link = href ? `<a class="u" href="${href}" target="_blank" rel="noopener noreferrer" title="${esc(c.url)}">${esc(shortUrl(c.url))}</a>` : `<span class="u">${esc(c.url)}</span>`;
+  const head = `<div class="h"><b>#${c.rank}</b><span>分数 ${c.score.toFixed(4)}</span><span>${c.len} 字</span><span>本页第 ${c.pos}/${c.of} 块</span>${c.gold ? `<span class="chip y">标准答案 ${c.gold}</span>` : ""}</div>`;
+  return compact ? `${head}<div class="t open">${esc(c.text)}</div>` : `${head}${link}<div class="t">${esc(c.text)}</div><button class="more">展开</button>`;
+}
+
+function colHtml(q, m) {
+  const d = q.methods[m] || {chunks: []};
+  const met = d.metrics || {};
+  const head = `<h3><span>${esc(m)}</span><span class="meta">hit@10 ${fmt("hit@10", met["hit@10"])} · MRR ${fmt("MRR", met.MRR)}</span></h3>`;
+  if (S.view === "chunk") {
+    return `<div class="col">${head}${d.chunks.map(c => `<div class="card ck${c.gold ? " g" : ""}" data-u="${esc(c.url)}">${chunkHtml(c)}</div>`).join("") || `<div class="meta">无结果</div>`}</div>`;
+  }
+  const pages = [], at = new Map();
+  for (const c of d.chunks) {
+    if (!at.has(c.url)) { at.set(c.url, pages.length); pages.push({url: c.url, gold: c.gold, items: []}); }
+    pages[at.get(c.url)].items.push(c);
+  }
+  return `<div class="col">${head}${pages.map((p, j) => {
+    const href = safeHref(p.url);
+    const link = href ? `<a class="u" href="${href}" target="_blank" rel="noopener noreferrer" title="${esc(p.url)}">${esc(shortUrl(p.url))}</a>` : esc(p.url);
+    return `<div class="card pg${p.gold ? " g" : ""}" data-u="${esc(p.url)}"><div class="h meta">网页 ${j + 1} · chunk 名次 ${p.items.map(c => "#" + c.rank).join(" ")}${p.gold ? ` · <span class="chip y">标准答案 ${p.gold}</span>` : ""}</div>${link}
+      <details><summary>查看 ${p.items.length} 个 chunk</summary>${p.items.map(c => `<div class="sub">${chunkHtml(c, true)}</div>`).join("")}</details></div>`;
+  }).join("") || `<div class="meta">无结果</div>`}</div>`;
+}
+
+$("main").addEventListener("click", e => {
+  const v = e.target.closest("[data-v]"); if (v) { S.view = v.dataset.v; renderMain(); return; }
+  if (e.target.id === "expand") {
+    const ts = document.querySelectorAll(".ck .t"), open = ![...ts].every(t => t.classList.contains("open"));
+    ts.forEach(t => t.classList.toggle("open", open));
+    document.querySelectorAll(".ck .more").forEach(b => b.textContent = open ? "收起" : "展开");
+    document.querySelectorAll(".pg details").forEach(dd => dd.open = open);
+    return;
+  }
+  if (e.target.classList.contains("more")) { const t = e.target.previousElementSibling; t.classList.toggle("open"); e.target.textContent = t.classList.contains("open") ? "收起" : "展开"; }
+});
+$("main").addEventListener("mouseover", e => {
+  const c = e.target.closest("[data-u]"); const u = c ? c.dataset.u : null;
+  if (u === S.hoverU) return; S.hoverU = u;
+  document.querySelectorAll(".same").forEach(x => x.classList.remove("same"));
+  if (u) document.querySelectorAll(`[data-u="${CSS.escape(u)}"]`).forEach(x => x.classList.add("same"));
+});
+document.addEventListener("keydown", e => {
+  if (!S.qs.length || /input|select|textarea/i.test(document.activeElement?.tagName || "")) return;
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const p = S.shown.indexOf(S.cur), n = p + (e.key === "ArrowDown" ? 1 : -1);
+  if (n >= 0 && n < S.shown.length) { e.preventDefault(); select(S.shown[n]); }
+});
+
+(async () => {
+  const u = new URLSearchParams(location.search).get("data");
+  if (!u) return;
+  try {
+    $("fmeta").textContent = `读取 ${u} …`;
+    const r = await fetch(u);
+    if (!r.ok) throw new Error(`读取 ${u} 失败：HTTP ${r.status}`);
+    load(await readText(r, u), u.split("/").pop());
+  } catch (e) { showErr(e); }
+})();
+</script>
+</body>
+</html>
