@@ -1,0 +1,130 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>《AutoChunker(ACL 2025 Industry)》解读报告</title><style>
+:root{color-scheme:light;--ink:#182b3b;--muted:#526879;--line:#d8e2e8;--accent:#196e86}
+*{box-sizing:border-box}body{margin:0;background:#f2f5f7;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.85;font-size:17px}main{max-width:1080px;margin:32px auto;background:white;padding:52px 66px;box-shadow:0 4px 26px #1225360b;border-radius:12px}h1{font-size:2em;line-height:1.35;margin:0 0 28px}h2{border-top:1px solid var(--line);padding-top:28px;margin-top:48px;font-size:1.5em}h3{font-size:1.2em;margin-top:32px}p{margin:16px 0}a{color:var(--accent);text-underline-offset:3px}blockquote{margin:22px 0;padding:2px 22px;border-left:4px solid #8bb6c4;background:#f4f8fa;color:var(--muted);font-size:.93em}code{background:#f0f4f6;padding:2px 5px;border-radius:4px;font-size:.88em;overflow-wrap:anywhere}pre{background:#f0f4f6;padding:14px 18px;border-radius:8px;overflow-x:auto;font-size:.85em}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%;font-size:.82em;margin:22px 0}th,td{padding:7px 9px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}th{background:#eaf2f5;font-weight:600}tbody tr:nth-child(even){background:#f8fafb}img{display:block;max-width:100%;height:auto;margin:24px auto}u{text-decoration:underline;text-decoration-color:#b3563d;text-underline-offset:2px}.equation,.katx{font-family:Georgia,serif;text-align:center;font-size:1.1em;padding:16px;overflow-x:auto;background:#f8fafb}li{margin:6px 0}hr{border:0;border-top:1px solid var(--line);margin:36px 0}
+@media(max-width:720px){body{font-size:16px}main{margin:0;border-radius:0;padding:28px 18px}th,td{padding:6px 4px;font-size:.9em}h1{font-size:1.65em}}
+@media print{body{background:white;font-size:11pt}main{max-width:none;margin:0;padding:0;box-shadow:none}a{color:inherit;text-decoration:none}h2,h3{break-after:avoid}tr,img,blockquote{break-inside:avoid}table{font-size:8pt}}
+</style></head><body><main><p><a href="全文中文翻译.html">← 全文中文翻译</a></p><nav><b>目录</b><ul><li style="margin-left:0px"><a href="#1-对你们最重要的结论">1. 对你们最重要的结论</a></li><li style="margin-left:0px"><a href="#2-论文实际做了什么">2. 论文实际做了什么</a></li><li style="margin-left:0px"><a href="#3-结果有多强">3. 结果有多强</a></li><li style="margin-left:14px"><a href="#3-1-切分质量-表-2">3.1 切分质量(表 2)</a></li><li style="margin-left:14px"><a href="#3-2-检索表现-表-3">3.2 检索表现(表 3)</a></li><li style="margin-left:14px"><a href="#3-3-成本-表-4">3.3 成本(表 4)</a></li><li style="margin-left:0px"><a href="#4-证据边界-不能外推什么">4. 证据边界:不能外推什么</a></li><li style="margin-left:0px"><a href="#5-对你们实验方案的映射">5. 对你们实验方案的映射</a></li><li style="margin-left:0px"><a href="#6-落地建议-综合判断-非论文结论">6. 落地建议(综合判断,非论文结论)</a></li></ul></nav><h1>《AutoChunker》解读报告</h1>
+<p>研究对象:Arihant Jain、Purav Aggarwal、Anoop Saladi,<em>AutoChunker: Structured Text Chunking and its Evaluation</em>,ACL 2025 Industry Track,983–995 页。作者来自 Amazon。</p>
+<p>报告日期:2026-09-21。依据论文全文 13 页;<a href="%E5%85%A8%E6%96%87%E4%B8%AD%E6%96%87%E7%BF%BB%E8%AF%91.md">全文中文翻译</a>同目录。区分&quot;作者观察&quot;&quot;证据边界&quot;&quot;对你们的工程建议&quot;。</p>
+<h2>1. 对你们最重要的结论</h2>
+<p><strong>这篇论文的价值不在切分算法本身(一个 claude-3.5-sonnet 驱动的自底向上聚合),而在两件你们可以直接借的东西:一是&quot;噪声、完整性、上下文转换、任务相关性&quot;的切分内在质量评估框架,正好是你们实验方案第一层&quot;边界诊断&quot;的现成 rubric;二是它把&quot;切分粒度&quot;与&quot;返回粒度&quot;分离(命中块返回子树),再次验证你们第三轮父子扩展的方向。同时它暴露了一个你们方案已经防住、但多数论文没防住的坑:切分器和评估器用同一个 LLM 的同源偏置。</strong></p>
+<p>三个对你们最直接的判断:</p>
+<ol>
+<li><strong>评估框架可借,评估协议要改</strong>:五项原则(§4)与你们第一层诊断的抽查维度几乎一一对应,但其全部指标由 claude-3.5-sonnet 评定,而切分器也是 claude-3.5-sonnet——同源偏置未排除,也无人工校准报告。你们方案&quot;模型打分需人工校准、不得让 chunker 为自己生成真值&quot;的规定,正是对这个风险的设计。</li>
+<li><strong>成本数字是 LLM 切分路线的重要参照</strong>:6.04 秒/文档(表 4),而 Recursive 0.11–0.24 秒;对全量网页离线索引,这比效果差异更可能是决定性约束。你们第四轮小范围试点 LLM 切分的决策正确。</li>
+<li><strong>线上收益是业务观察,不是实验结论</strong>:检索精度 +7%、退货率 −6.5bps(=−0.065 个百分点)没有对照设计细节,不能当作 RAG 切分收益的定量依据,但&quot;退货率&quot;这个业务指标选择值得学习——切分质量最终要接到可感知的业务结果。</li>
+</ol>
+<h2>2. 论文实际做了什么</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>设置</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>预处理</td>
+<td>HTML→标准 Markdown,保留标题层级</td>
+<td>结构信号来自 Markdown 化之后</td>
+</tr>
+<tr>
+<td>切分</td>
+<td>句/行编号 → LLM 输出合并区间 <code>&lt;merged&gt;ID1-ID2&lt;/merged&gt;</code>,同时剔噪</td>
+<td>自底向上;只输出 ID 不改写原文(与你们&quot;LLM 切分返回原文 span&quot;的约束一致)</td>
+</tr>
+<tr>
+<td>建树</td>
+<td>按 Markdown 标题组织层次;超长块等分并在树中保留关系</td>
+<td>块均 94.3 tokens(表 4),粒度很小</td>
+</tr>
+<tr>
+<td>检索</td>
+<td>命中块返回以其为根的子树;重叠子树去重(CAR)</td>
+<td>小块召回、子树返回</td>
+</tr>
+<tr>
+<td>评估</td>
+<td>LLM-as-judge 五原则 + 合成查询的 WP@K</td>
+<td>无人工标注的真值块</td>
+</tr>
+<tr>
+<td>数据</td>
+<td>Common Crawl 产品支持页 + Wikipedia</td>
+<td>英文;各领域样本量未报全</td>
+</tr>
+<tr>
+<td>部署</td>
+<td>在线产品支持商店 + RAG 聊天机器人</td>
+<td>+7% 检索精度;退货率 −6.5bps</td>
+</tr>
+</tbody>
+</table>
+<p>来源:§3–§7、附录 A/B。</p>
+<h2>3. 结果有多强</h2>
+<h3>3.1 切分质量(表 2)</h3>
+<p>两个领域一致:噪声 1.12%/2.31% vs 基线最好 24.00%/25.34%;完整性 93.03%/91.24% vs 最好 71.21%/69.87%;上下文转换 1.66%/2.05% vs 2.96%/3.15%(Recursive+HTML);任务相关性 94.76%/92.87%。<strong>注意基线内部的反常</strong>:Recursive+HTML 的完整性与上下文转换远好于 Recursive+Text/Markdown(切得太碎、块均 14.2 tokens),但任务相关性最差(45.16%)——不同指标会选出不同&quot;第二名&quot;,单一指标选型有风险。</p>
+<h3>3.2 检索表现(表 3)</h3>
+<p>WP@1:75.42/72.95 vs LLMSemantic 69.12/66.78。CAR 只改善 WP@3/WP@5(68.74 vs 63.42),WP@1 不变——符合&quot;返回更完整上下文不影响第一命中&quot;的直觉,支持小块索引+扩展返回。</p>
+<h3>3.3 成本(表 4)</h3>
+<p>AutoChunker 6.04s、2223 块/文档、块均 94.3 tokens;LLMSemantic 49.39s;LumberChunker 10.52s、块均 1314.5 tokens;Recursive 0.11–5.61s。译者注:最后一列统计口径需复现核实。</p>
+<h2>4. 证据边界:不能外推什么</h2>
+<ol>
+<li><strong>切分与评估同用 claude-3.5-sonnet</strong>:LLM 评审对自身风格输出可能有系统性偏好;无人工标注对照,五个指标的绝对值不可直接当作客观真值。</li>
+<li><strong>合成查询</strong>:检索评估的查询由块生成(提示词 7),分布偏&quot;块内可答&quot;,天然利好本方法的完整性;与真实用户查询的差距未量化。</li>
+<li><strong>结构利用是&quot;Markdown 标题级&quot;</strong>:不是 DOM 作用域;表格、列表项归属、行内结构未处理。不能当 HTML 结构切分的证据。</li>
+<li><strong>无统计检验报告</strong>:未给显著性、置信区间;样本量未报全。</li>
+<li><strong>英文产品支持页与维基</strong>:无中文;噪声类型(导航/页脚)与中文网页模板噪声的分布不同。</li>
+<li><strong>线上数字无对照细节</strong>:&quot;与内部静态切分基线相比&quot;的 7% 未说明是相对还是百分点(译者注已标记),退货率归因还受同期其他因素影响。</li>
+</ol>
+<h2>5. 对你们实验方案的映射</h2>
+<table>
+<thead>
+<tr>
+<th>你们的组件</th>
+<th>本文证据</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>第一层边界诊断(噪声/完整性/混装抽查)</td>
+<td>§4 五原则 + 附录 B 提示词 2–5</td>
+<td>直接借 rubric 与提示词骨架;必须加人工校准与隐藏方法名</td>
+</tr>
+<tr>
+<td>LLM 切分(第四轮候选)</td>
+<td>6.04s/文档;输出 ID 区间不改写原文</td>
+<td>参照其&quot;只输出边界标识&quot;协议;成本按你们页均长度折算</td>
+</tr>
+<tr>
+<td>第三轮父段/子树扩展</td>
+<td>CAR:WP@3/5 提升、WP@1 不变</td>
+<td>支持父子扩展的预期:不动召回粒度,只改善返回完整性</td>
+</tr>
+<tr>
+<td>块长预算</td>
+<td>块均 94.3 tokens 显著小于你们的 256 字符</td>
+<td>提示:完整性高不等于块大;但其在合成查询下评估,粒度结论不可迁移</td>
+</tr>
+<tr>
+<td>业务指标</td>
+<td>退货率 −6.5bps</td>
+<td>线上阶段可考虑同类&quot;任务完成&quot;代理指标,不做因果解读</td>
+</tr>
+<tr>
+<td>防自评偏置</td>
+<td>反面教材:切分=评估模型</td>
+<td>你们方案 §3 的规定保留并写明引用此风险</td>
+</tr>
+</tbody>
+</table>
+<h2>6. 落地建议(综合判断,非论文结论)</h2>
+<ol>
+<li>把五项评估原则翻译进你们第一层诊断的打分表,每项配 2–3 个中文网页锚例;LLM 打分仅作初筛,分歧样本人工复核——这与你们现有方案一致,本文提供的是现成提示词模板。</li>
+<li>第四轮 LLM 切分试点可采用其输入/输出协议(编号段落进、合并区间出、原文照录),但预期成本按 6s/文档 × 你们日处理页数量级评估,先在高价值页面子集试。</li>
+<li>噪声清单(导航/页脚/相关文章/客服挂件)可直接并入 EC 去噪的验收样例分类,与 R08 对齐。</li>
+<li>引用其线上数字时,一律标注&quot;业务观察、无对照设计细节&quot;,避免在评审材料中被当作定量依据。</li>
+</ol>
+</main></body></html>

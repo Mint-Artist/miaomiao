@@ -1,0 +1,2592 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>语义切分值得其计算成本吗(NAACL 2025 Findings)——全文中文翻译</title><style>
+:root{color-scheme:light;--ink:#182b3b;--muted:#526879;--line:#d8e2e8;--accent:#196e86}
+*{box-sizing:border-box}body{margin:0;background:#f2f5f7;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.85;font-size:17px}main{max-width:1080px;margin:32px auto;background:white;padding:52px 66px;box-shadow:0 4px 26px #1225360b;border-radius:12px}h1{font-size:2em;line-height:1.35;margin:0 0 28px}h2{border-top:1px solid var(--line);padding-top:28px;margin-top:48px;font-size:1.5em}h3{font-size:1.2em;margin-top:32px}p{margin:16px 0}a{color:var(--accent);text-underline-offset:3px}blockquote{margin:22px 0;padding:2px 22px;border-left:4px solid #8bb6c4;background:#f4f8fa;color:var(--muted);font-size:.93em}code{background:#f0f4f6;padding:2px 5px;border-radius:4px;font-size:.88em;overflow-wrap:anywhere}pre{background:#f0f4f6;padding:14px 18px;border-radius:8px;overflow-x:auto;font-size:.85em}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%;font-size:.82em;margin:22px 0}th,td{padding:7px 9px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}th{background:#eaf2f5;font-weight:600}tbody tr:nth-child(even){background:#f8fafb}img{display:block;max-width:100%;height:auto;margin:24px auto}u{text-decoration:underline;text-decoration-color:#b3563d;text-underline-offset:2px}.equation,.katx{font-family:Georgia,serif;text-align:center;font-size:1.1em;padding:16px;overflow-x:auto;background:#f8fafb}li{margin:6px 0}hr{border:0;border-top:1px solid var(--line);margin:36px 0}
+@media(max-width:720px){body{font-size:16px}main{margin:0;border-radius:0;padding:28px 18px}th,td{padding:6px 4px;font-size:.9em}h1{font-size:1.65em}}
+@media print{body{background:white;font-size:11pt}main{max-width:none;margin:0;padding:0;box-shadow:none}a{color:inherit;text-decoration:none}h2,h3{break-after:avoid}tr,img,blockquote{break-inside:avoid}table{font-size:8pt}}
+</style></head><body><main><p><a href="论文解读报告.html">← 论文解读报告</a></p><nav><b>目录</b><ul><li style="margin-left:0px"><a href="#摘要">摘要</a></li><li style="margin-left:0px"><a href="#1-引言">1 引言</a></li><li style="margin-left:0px"><a href="#2-切分策略">2 切分策略</a></li><li style="margin-left:14px"><a href="#图-1-三种切分器示意">图 1：三种切分器示意</a></li><li style="margin-left:14px"><a href="#固定大小切分器">固定大小切分器</a></li><li style="margin-left:14px"><a href="#基于断点的语义切分器">基于断点的语义切分器</a></li><li style="margin-left:14px"><a href="#基于聚类的语义切分器">基于聚类的语义切分器</a></li><li style="margin-left:0px"><a href="#3-实验">3 实验</a></li><li style="margin-left:14px"><a href="#3-1-文档检索">3.1 文档检索</a></li><li style="margin-left:14px"><a href="#3-2-证据检索">3.2 证据检索</a></li><li style="margin-left:14px"><a href="#3-3-答案生成">3.3 答案生成</a></li><li style="margin-left:0px"><a href="#4-结果">4 结果</a></li><li style="margin-left:14px"><a href="#4-1-性能的衡量与报告">4.1 性能的衡量与报告</a></li><li style="margin-left:14px"><a href="#4-2-文档检索">4.2 文档检索</a></li><li style="margin-left:14px"><a href="#4-3-证据检索">4.3 证据检索</a></li><li style="margin-left:14px"><a href="#4-4-答案生成结果">4.4 答案生成结果</a></li><li style="margin-left:0px"><a href="#5-结论">5 结论</a></li><li style="margin-left:0px"><a href="#局限性">局限性</a></li><li style="margin-left:14px"><a href="#句子级切分">句子级切分</a></li><li style="margin-left:14px"><a href="#缺乏文本块质量度量">缺乏文本块质量度量</a></li><li style="margin-left:14px"><a href="#缺乏合适的数据集">缺乏合适的数据集</a></li><li style="margin-left:0px"><a href="#参考文献">参考文献</a></li><li style="margin-left:0px"><a href="#附录-A-基于聚类的语义切分器所用的聚类方法">附录 A：基于聚类的语义切分器所用的聚类方法</a></li><li style="margin-left:0px"><a href="#附录-B-超参数">附录 B：超参数</a></li><li style="margin-left:14px"><a href="#固定大小切分器-1">固定大小切分器</a></li><li style="margin-left:14px"><a href="#基于断点的语义切分器-1">基于断点的语义切分器</a></li><li style="margin-left:14px"><a href="#基于聚类的语义切分器-1">基于聚类的语义切分器</a></li><li style="margin-left:0px"><a href="#附录-C-文档拼接与数据集选择">附录 C：文档拼接与数据集选择</a></li><li style="margin-left:0px"><a href="#附录-D-评估指标的选择">附录 D：评估指标的选择</a></li><li style="margin-left:14px"><a href="#文档检索">文档检索</a></li><li style="margin-left:14px"><a href="#证据检索">证据检索</a></li><li style="margin-left:14px"><a href="#答案生成">答案生成</a></li><li style="margin-left:0px"><a href="#附录-E-补充结果与分析">附录 E：补充结果与分析</a></li><li style="margin-left:14px"><a href="#E-1-答案生成结果">E.1 答案生成结果</a></li><li style="margin-left:14px"><a href="#E-2-嵌入模型的影响">E.2 嵌入模型的影响</a></li><li style="margin-left:14px"><a href="#E-3-超参数分析">E.3 超参数分析</a></li><li style="margin-left:14px"><a href="#E-4-文本块检查">E.4 文本块检查</a></li><li style="margin-left:14px"><a href="#E-5-嵌入模型对文档检索和答案生成的影响">E.5 嵌入模型对文档检索和答案生成的影响</a></li><li style="margin-left:14px"><a href="#附录补充数据表-所有-k-值的结果">附录补充数据表：所有 k 值的结果</a></li><li style="margin-left:14px"><a href="#附录图-2-5-超参数与性能">附录图 2–5：超参数与性能</a></li><li style="margin-left:14px"><a href="#图-6-拼接文档切分示例">图 6：拼接文档切分示例</a></li><li style="margin-left:14px"><a href="#图-7-普通文档切分示例">图 7：普通文档切分示例</a></li><li style="margin-left:0px"><a href="#译者附记-原文中需要注意的对应关系">译者附记：原文中需要注意的对应关系</a></li><li style="margin-left:14px"><a href="#页码覆盖索引">页码覆盖索引</a></li></ul></nav><h1>语义切分值得其计算成本吗？</h1>
+<p><em>Is Semantic Chunking Worth the Computational Cost?</em> 全文中文翻译</p>
+<ul>
+<li>作者：Renyi Qu、Ruixuan Tu、Forrest Bao（ACL 元数据为 Forrest Sheng Bao）。</li>
+<li>单位与邮箱：Renyi Qu，Vectara, Inc.，renyi@vectara.com；Ruixuan Tu，威斯康星大学麦迪逊分校，turx2003@gmail.com；Forrest Bao，Vectara, Inc.，forrest@vectara.com。</li>
+<li>出处：<em>Findings of the Association for Computational Linguistics: NAACL 2025</em>，第 2155–2177 页，2025 年 4 月 29 日至 5 月 4 日。© 2025 Association for Computational Linguistics。</li>
+<li>DOI：<a href="https://doi.org/10.18653/v1/2025.findings-naacl.114">10.18653/v1/2025.findings-naacl.114</a>。<a href="https://aclanthology.org/2025.findings-naacl.114/">论文页面</a>；<a href="https://aclanthology.org/2025.findings-naacl.114.pdf">原始 PDF</a>。</li>
+<li>授权：原文依据 <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> 发布。本文件为 AI 辅助中文翻译及排版改编，非作者或 ACL 官方译文；原作者未为本译文背书。原文图表版权归原权利人所有。</li>
+<li>翻译日期：2026-09-20。范围：PDF 全部 23 页，含正文、局限性、参考文献、附录 A–E、23 张表和 7 幅图。</li>
+</ul>
+<blockquote>
+<p><strong>译文说明</strong>：保留原章节和图表编号；“chunk”统一译为“文本块”，“chunking”译为“切分”，“chunker”译为“切分器”。表格数值按原文照录，不擅自订正。图像保留原图，图注、标签和图中示例文字另提供中文。参考文献保留作者姓名和可检索的出版标识，标题译为中文。所有“译者注”均为补充说明，不属于论文原文。图 6、图 7 的省略号是原图已有的截断，不是译文省略；重复句子的翻译通过句子索引与分块表完整对应。</p>
+</blockquote>
+<h2>摘要</h2>
+<p>检索增强生成（RAG）系统的近期进展推动了语义切分的普及。这种方法旨在把文档划分为语义连贯的片段，以改善检索性能。尽管其应用日益广泛，但与更简单的固定大小切分相比，它的实际收益仍不明确；后者把文档切分为连续、大小固定的片段。本研究通过三类常见的检索相关任务，系统评估语义切分的有效性：文档检索、证据检索，以及基于检索的答案生成。结果表明，语义切分带来的计算成本并未得到稳定性能提升的支撑。这些发现对以往关于语义切分的假设提出了挑战，也凸显了在 RAG 系统中寻找更高效切分策略的必要性。</p>
+<h2>1 引言</h2>
+<p>在检索增强生成（RAG）系统中，把文档切成称为“文本块”的较小单元，对检索和生成任务的质量都有关键影响（Chen et al., 2023；Wadhwa et al., 2024；Shi et al., 2023；Yu et al., 2023）。这些系统针对给定查询检索最相关的文本块，再将其输入生成式语言模型，以产生准确且符合上下文的答案。然而，要同时优化检索质量和计算效率，切分策略是否有效仍是一项重要挑战（Lewis et al., 2020；Finardi et al., 2024）。</p>
+<p>传统切分方法把文档切为固定长度的文本块，例如每块 200 个 token，这种方法称为固定大小切分（Gao et al., 2023）。虽然计算简单，但它可能把语义相关的内容分散到多个文本块中，导致检索性能不够理想。近来，语义切分受到越来越多关注。这类方法根据语义相似度划分文档，一些业界应用显示出有希望的性能改进（LangChain, 2024；LlamaIndex, 2024；McCormick, 2024）。但目前没有系统证据表明，语义切分能够提升下游任务性能；即使能够提升，也没有证据证明其收益足够显著，能够抵偿相对于固定大小切分增加的计算开销。</p>
+<p>由于缺乏能够直接比较切分策略的数据，开展这种系统评估并不容易。因此，我们设计了使用三个代理任务的间接评估：（1）文档检索，衡量识别相关文档的能力；（2）证据检索，衡量定位真实标注证据的能力；（3）答案生成，检验生成模型利用检索块产生的答案质量。我们的发现挑战了对语义切分收益的普遍假设：其优势高度依赖任务，且往往不足以抵偿增加的计算成本。这项研究为进一步探索更高效、更具适应性的 RAG 切分策略奠定了基础。</p>
+<p>总体而言，我们的贡献如下：</p>
+<ul>
+<li>提出一个新的大规模评估框架，在多种任务上比较语义切分与固定大小切分。</li>
+<li>证明语义切分虽然在某些场景中存在收益，但这些收益并不稳定，而且往往不足以抵偿其计算成本。</li>
+</ul>
+<h2>2 切分策略</h2>
+<p>本文首先把文档拆成句子，再将句子组合为文本块。我们评估三种切分策略，后文称其为“切分器”。</p>
+<h3>图 1：三种切分器示意</h3>
+<p><img src="assets/figure1.png" alt="图1：三种切分器原图" /></p>
+<p><strong>图 1 图注译文</strong>：本文测试的三种切分器。不同颜色表示示例文档中的不同主题：紫色为心理学，绿色为编程，黄色为食物。红色块表示切分断点。（a）固定大小切分器不考虑语义内容，将文档切成连续、大小一致的文本块。（b）基于断点的语义切分器通过检测相邻句子之间的语义距离阈值划分文本，以保持连贯性。（c）基于聚类的语义切分器把语义相似的句子分组，可能将不连续的文本组合为按主题组织的文本块。</p>
+<p>图内标签译文：Sentences＝句子；Chunks＝文本块；Sentence Embeddings＝句子嵌入；Distance Array＝距离数组；Distance Threshold＝距离阈值；Breakpoints＝断点；Clustering＝聚类；Clustering Method＝聚类方法。</p>
+<p>图内七个示例片段按输入顺序为：①心理过程……；②这顿饭包含……；③Python 是一种高效的……；④如今的程序员……；⑤思想和情绪……；⑥苹果醋……；⑦我喜欢意大利食物……。固定大小方法得到 <code>[①②③] [④⑤⑥] [⑦]</code>；断点方法得到 <code>[①] [②] [③④] [⑤] [⑥⑦]</code>；聚类方法得到 <code>[①⑤] [③④] [②⑥⑦]</code>。</p>
+<h3>固定大小切分器</h3>
+<p>这是我们的基线切分器。它根据预先定义或用户指定的每块句子数，按顺序把文档切成大小固定的文本块。</p>
+<p>尽管这种方法简单、计算高效，但它可能拆开上下文相关的句子，从而使检索质量下降（Lewis et al., 2020；Finardi et al., 2024；Gao et al., 2023）。为了缓解这一问题，我们让相邻文本块包含重叠句子。这是一种常见做法，可以维持一定程度的上下文连续性。</p>
+<h3>基于断点的语义切分器</h3>
+<p>基于断点的切分器扫描句子序列，决定在何处插入断点，从而把断点前后的句子分为两个文本块。如果两个相邻句子的语义距离超过阈值，意味着出现了显著的主题变化，便插入一个断点。</p>
+<p>我们测试了 LangChain（2024）提出的四种用于确定断点的相对阈值。此外，我们还测试了两种绝对阈值：用预先设定的数值确定文本块边界，从而减少计算开销。</p>
+<p>但基于断点的切分器每次仅根据两个句子作出决策。这种策略可能具有局部贪心性。为了在更大范围内利用更多信息进行切分，我们接下来提出一种新的语义切分器。</p>
+<h3>基于聚类的语义切分器</h3>
+<p>这类切分器利用聚类算法，按语义把句子组合在一起，捕获全局关系，并允许不按原始顺序分组。然而，这可能丢失隐藏在句子邻近关系中的上下文信息。为缓解这一问题，我们定义了一种结合位置距离与语义距离的新距离度量。具体而言，我们对句子 $x_a$ 与 $x_b$ 的位置距离（即句子索引差）和余弦距离求加权和：</p>
+<p>$$
+d(x_a,x_b)=\lambda d_{\mathrm{pos}}(x_a,x_b)+(1-\lambda)d_{\mathrm{cos}}(x_a,x_b) \tag{1}
+$$</p>
+<p>$$
+d_{\mathrm{pos}}(x_a,x_b)=\frac{|a-b|}{n} \tag{2}
+$$</p>
+<p>$$
+d_{\mathrm{cos}}(x_a,x_b)=1-\max\bigl(\cos(\mathrm{emb}(x_a),\mathrm{emb}(x_b)),0\bigr) \tag{3}
+$$</p>
+<p>其中，$n$ 是文档的句子总数，$\mathrm{emb}(\cdot)$ 是嵌入函数，$\lambda$ 是超参数。当 $\lambda=0$ 时，切分器完全依据语义相似度工作；当 $\lambda=1$ 时，它对应于固定大小切分器。式（3）中，余弦相似度为 0 表示句子嵌入彼此正交，即不相关；负余弦相似度被视为 0，因为它们对检索或生成没有帮助。</p>
+<p>在不失一般性的前提下，我们采用单链接凝聚聚类和 DBSCAN（Ester et al., 1996）作为聚类算法的代表。关于这些方法及实验中所作调整的更多细节，见附录 A。</p>
+<blockquote>
+<p>译者注：上段关于 $\lambda=1$ 和负相似度的解释为作者原文观点。距离仅使用位置，并不在一般数学意义上保证所有聚类实现都与固定大小顺序切分完全等价。</p>
+</blockquote>
+<h2>3 实验</h2>
+<p>由于缺乏真实标注的文本块数据，我们设计了三个实验，间接评估各切分器的质量：文档检索、证据检索和答案生成。各实验采用不同的数据集和评估指标，以适应其具体任务需求。所有文档先使用 spaCy 的 <code>en_core_web_sm</code> 模型（Explosion, 2024）拆成句子，再进行嵌入编码和切分。我们根据 MTEB 排行榜（Muennighoff et al., 2022）的排名，选择了三种覆盖不同性能水平的嵌入模型进行测试。详见附录 E.2。</p>
+<h3>3.1 文档检索</h3>
+<p>本实验评估切分器针对给定查询检索相关文档的有效性。我们使用了表 1 和表 4 中的 10 个数据集。BEIR 基准（Thakur et al., 2021）中的大多数文档太短，难以体现切分的作用。为此，我们在六个文档过短的数据集中，将短文档拼接为较长的合成文档，详见附录 C。我们从每个数据集中随机抽取 100 个查询，检索前 $k$ 个文本块，其中 $k\in{1,3,5,10}$。每个检索块映射到其来源文档，再将检索出的文档与各查询的相关文档集合进行比较评估。</p>
+<h3>3.2 证据检索</h3>
+<p>本实验采用比前一实验更细的粒度，通过定位证据句子的能力来评估切分器。由于包含长文档及真实标注证据句子的数据集很少，我们从 RAGBench（Friel et al., 2024）额外选取了数据集，见表 2 和表 5。我们统计检索到的前 $k$ 个文本块中包含多少条真实标注的证据句子。</p>
+<h3>3.3 答案生成</h3>
+<p>本实验衡量切分器如何影响大语言模型生成答案的质量。我们使用 <code>gpt-4o-mini</code> 作为生成模型，将检索到的前 5 个文本块作为模型输入，并用语义相似度指标比较生成答案和真实标注答案。我们复用了第 3.2 节的数据集，因为它们同时包含长文档、证据和参考答案。</p>
+<h2>4 结果</h2>
+<h3>4.1 性能的衡量与报告</h3>
+<p>如前所述，我们使用三个代理任务研究切分。由于缺乏文本块级别的真实标注，无法直接评估文本块级检索质量。因此，每个检索块都映射回来源文档或其包含的证据句子。</p>
+<p>由于相关文档或证据句子的数量并不固定，而检索块数量 $k$ 是固定的，传统的 Recall@k 和 NDCG@k 等指标并不适用。在这种情况下，F1 能够同时考虑精确率和召回率，提供平衡的衡量。因此，我们使用 F1@5 作为指标。更多细节见附录 D。</p>
+<blockquote>
+<p>译者注：这是作者针对本文评估设置的指标选择理由，并非 Recall 或 NDCG 的一般适用条件。相关项数量可变并不使这些指标在数学上失效；具体区别见配套解读报告。</p>
+</blockquote>
+<p>对于每个数据集，我们报告各切分器在最佳超参数配置下的结果；最佳配置根据所有 $k$ 值的平均 F1 分数确定。下文所有结果均使用 <code>dunzhang/stella_en_1.5B_v5</code> 作为嵌入模型，因为它在所测试模型中表现最好。</p>
+<p>下文加粗数值表示对应数据集上的最佳性能。答案生成结果与证据检索结果非常接近，附录 E.1 对此进行了讨论。附录 B 提供了进一步的超参数分析，附录 E.4 检查了不同切分器的输出。</p>
+<blockquote>
+<p>译者注：为避免四舍五入后相同数字的加粗产生歧义，译文数据表统一保留数值，不复刻原表的粗体胜者标记。附录 B 实际列出超参数，性能变化分析主要在附录 E.3。</p>
+</blockquote>
+<h3>4.2 文档检索</h3>
+<p>表 1 显示各切分器的性能有所不同：固定大小切分器在未拼接数据集上表现突出，语义切分器在拼接数据集上表现更好。</p>
+<p><strong>表 1：文档检索 F1@5（%）。带 <code>*</code> 的数据集经过拼接。为便于比较，按拼接前每篇文档的平均句子数升序排列。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl*</td>
+<td style="text-align:right">69.45</td>
+<td style="text-align:right">81.89</td>
+<td style="text-align:right">67.35</td>
+</tr>
+<tr>
+<td>NQ*</td>
+<td style="text-align:right">43.79</td>
+<td style="text-align:right">63.93</td>
+<td style="text-align:right">41.01</td>
+</tr>
+<tr>
+<td>Scidocs*</td>
+<td style="text-align:right">16.82</td>
+<td style="text-align:right">17.60</td>
+<td style="text-align:right">19.87</td>
+</tr>
+<tr>
+<td>Scifact*</td>
+<td style="text-align:right">35.27</td>
+<td style="text-align:right">36.27</td>
+<td style="text-align:right">35.70</td>
+</tr>
+<tr>
+<td>BioASQ*</td>
+<td style="text-align:right">61.86</td>
+<td style="text-align:right">61.87</td>
+<td style="text-align:right">62.49</td>
+</tr>
+<tr>
+<td>NFCorpus*</td>
+<td style="text-align:right">21.36</td>
+<td style="text-align:right">21.07</td>
+<td style="text-align:right">22.12</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">90.59</td>
+<td style="text-align:right">87.37</td>
+<td style="text-align:right">84.79</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">93.58</td>
+<td style="text-align:right">92.23</td>
+<td style="text-align:right">93.18</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">68.11</td>
+<td style="text-align:right">64.44</td>
+<td style="text-align:right">65.94</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">90.99</td>
+<td style="text-align:right">89.27</td>
+<td style="text-align:right">90.77</td>
+</tr>
+</tbody>
+</table>
+<p>如附录 C 所述，平均包含 100 个句子的拼接文档，是将 Miracl 和 NQ 等数据集中较短的文档（少于 10 个句子）组合而成的，因此具有很高的主题多样性。在这种情况下，基于断点的语义切分器优于其他方法，因为它能更好地保持主题完整性：根据语义差异切分句子，形成与原始文档相似的文本块。相较之下，固定大小和基于聚类的切分器经常混合来自不同文档的句子，增加噪声，降低检索质量。</p>
+<p>随着文档长度增加，拼接所需的文档数量减少，主题多样性随之降低。这削弱了基于断点的语义切分器的优势，而基于聚类的语义切分器的表现有所改善。语义切分器与固定大小切分器之间的差距缩小；固定大小切分器受益于更高的主题完整性。</p>
+<p>这些结果表明，现实文档的主题可能不像我们人为制造噪声的拼接数据那样多样，因此在现实场景中，语义切分器未必优于固定大小切分器。</p>
+<h3>4.3 证据检索</h3>
+<p>如表 2 所示，固定大小切分器在 5 个数据集中的 3 个上表现最好，表明其在捕获核心证据句子方面略有优势。但固定大小切分器与两种语义切分器之间的性能差异很小，说明没有哪一种切分策略具有明确优势。更多细节见附录 B。</p>
+<p>进一步检查发现，尽管切分方法不同，检索到的前 $k$ 个文本块往往包含相同的证据句子，这解释了为何性能差异较小。这表明引入语义信息并未显著提升性能：当句子位置已经能够覆盖核心证据时，语义分组的收益往往是冗余的。这些发现说明，切分器的性能主要取决于嵌入模型能否有效捕获单个句子的丰富语义，而非切分策略本身。</p>
+<p><strong>表 2：证据检索 F1@5（%）。为便于比较，按每篇文档平均句子数升序排列。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">47.11</td>
+<td style="text-align:right">47.08</td>
+<td style="text-align:right">46.87</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">43.05</td>
+<td style="text-align:right">43.24</td>
+<td style="text-align:right">43.36</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">28.98</td>
+<td style="text-align:right">28.49</td>
+<td style="text-align:right">27.96</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">18.23</td>
+<td style="text-align:right">19.83</td>
+<td style="text-align:right">19.14</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">8.66</td>
+<td style="text-align:right">8.16</td>
+<td style="text-align:right">8.50</td>
+</tr>
+</tbody>
+</table>
+<h3>4.4 答案生成结果</h3>
+<p>如表 3 所示，按照 BERTScore，语义切分器略优于固定大小切分器，但差异很小，难以得出明确结论。</p>
+<p><strong>表 3：答案生成的 BERTScore。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">0.65</td>
+<td style="text-align:right">0.65</td>
+<td style="text-align:right">0.65</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">0.76</td>
+<td style="text-align:right">0.76</td>
+<td style="text-align:right">0.76</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">0.68</td>
+<td style="text-align:right">0.68</td>
+<td style="text-align:right">0.68</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">0.42</td>
+<td style="text-align:right">0.43</td>
+<td style="text-align:right">0.43</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">0.49</td>
+<td style="text-align:right">0.49</td>
+<td style="text-align:right">0.50</td>
+</tr>
+</tbody>
+</table>
+<h2>5 结论</h2>
+<p>本文在文档检索、证据检索和答案生成三个任务上，评估了 RAG 系统中的语义切分和固定大小切分策略。语义切分偶尔能够改善性能，尤其是在主题高度多样的拼接数据集上。但这些收益高度依赖具体场景，未能持续证明额外计算成本的合理性。在更贴近真实文档的非合成数据集上，固定大小切分往往表现更好。</p>
+<p>总体而言，我们的结果表明，对于实际 RAG 应用，固定大小切分仍然是更高效、更可靠的选择。切分策略的影响往往被嵌入质量等其他因素所掩盖，尤其是在计算资源有限或处理标准文档结构时。</p>
+<h2>局限性</h2>
+<h3>句子级切分</h3>
+<p>本研究聚焦于句子级切分：先把文档拆为独立句子，再将每个句子作为分组单元。这种方法产生的句子嵌入缺少上下文信息。虽然我们通过固定大小切分器中的句子重叠，以及全局语义切分器中的位置距离，尝试缓解这一问题，但嵌入本身仍然不包含上下文。在对语义切分的局限作出确定结论之前，需要进一步探索具有上下文信息的嵌入。</p>
+<h3>缺乏文本块质量度量</h3>
+<p>如第 4 节所述，不同方法产生的文本块有所差异，但各切分器的检索和生成表现却相近。除了嵌入模型的影响，缺乏直接衡量文本块质量的指标，也可能是造成这一现象的原因。若能获得真实标注的“查询—文本块”相关性分数，就能比仅依靠文档或证据映射进行更准确的评估。</p>
+<h3>缺乏合适的数据集</h3>
+<p>尽管我们测试了多个数据集，选择仍受到综合性数据集不足的限制。理想的数据集应包含能够代表真实使用场景的长文档、多样的查询类型、人工撰写的答案、查询—文档相关性分数，以及人工标注的证据句子。由于随机拼接，我们的合成文档具有人工制造的高主题多样性，可能导致结果不够可靠。此外，RAGBench（Friel et al., 2024）的答案集合由大语言模型生成，未必能够准确评估文本块质量。要更全面地评估切分策略，需要一个包含上述全部要素的数据集。</p>
+<h2>参考文献</h2>
+<blockquote>
+<p>译者注：以下按原文顺序保留全部 35 项参考文献。标题为中文译名，模型名、数据集名、人名、会议缩写和 arXiv 编号保留，以便定位原文。原文使用“et al.”的条目译为“等”。</p>
+</blockquote>
+<ol>
+<li>Valeriia Bolotova-Baranova, Vladislav Blinov, Sofya Filippova, Falk Scholer, Mark Sanderson. 2023. <strong>WikiHowQA：面向多文档非事实型问答的综合基准。</strong> 第 61 届 ACL 年会论文集，第 1 卷：长论文，5291–5314 页。</li>
+<li>Vera Boteva, Demian Gholipour, Artem Sokolov, Stefan Riezler. 2016. <strong>用于医学信息检索的全文学习排序数据集。</strong>《信息检索进展：第 38 届欧洲信息检索研究会议 ECIR 2016》，意大利帕多瓦，2016 年 3 月 20–23 日，会议论文集 38，716–722 页。Springer。</li>
+<li>Vittorio Castelli, Rishav Chakravarti, Saswati Dana, Anthony Ferritto, Radu Florian, Martin Franz, Dinesh Garg, Dinesh Khandelwal, Scott McCarley, Mike McCawley 等. 2019. <strong>TechQA 数据集。</strong> arXiv 预印本，arXiv:1911.02984。</li>
+<li>Jianlv Chen, Shitao Xiao, Peitian Zhang, Kun Luo, Defu Lian, Zheng Liu. 2024. <strong>BGE M3-Embedding：通过自知识蒸馏实现多语言、多功能、多粒度文本嵌入。</strong> arXiv 预印本，arXiv:2402.03216。</li>
+<li>Tong Chen, Hongwei Wang, Sihao Chen, Wenhao Yu, Kaixin Ma, Xinran Zhao, Dong Yu, Hongming Zhang. 2023. <strong>Dense X Retrieval：我们应使用什么检索粒度？</strong> arXiv 预印本，arXiv:2312.06648。</li>
+<li>Arman Cohan, Sergey Feldman, Iz Beltagy, Doug Downey, Daniel S. Weld. 2020. <strong>SPECTER：利用引文信息 Transformer 进行文档级表示学习。</strong> arXiv 预印本，arXiv:2004.07180。</li>
+<li>Pradeep Dasigi, Kyle Lo, Iz Beltagy, Arman Cohan, Noah A. Smith, Matt Gardner. 2021. <strong>基于研究论文的信息寻求型问答数据集。</strong> arXiv 预印本，arXiv:2105.03011。</li>
+<li>Martin Ester, Hans-Peter Kriegel, Jörg Sander, Xiaowei Xu 等. 1996. <strong>一种在含噪声大型空间数据库中发现簇的密度算法。</strong> KDD，第 96 卷，226–231 页。</li>
+<li>Explosion. 2024. <strong>英语：spaCy 模型文档。</strong></li>
+<li>Paulo Finardi, Leonardo Avila, Rodrigo Castaldoni, Pedro Gengo, Celio Larcher, Marcos Piau, Pablo Costa, Vinicius Caridá. 2024. <strong>RAG 纪事：检索器、文本块与生成器。</strong> arXiv 预印本，arXiv:2401.07883。</li>
+<li>Robert Friel, Masha Belyi, Atindriyo Sanyal. 2024. <strong>RAGBench：面向检索增强生成系统的可解释基准。</strong> arXiv 预印本，arXiv:2407.11005。</li>
+<li>Yunfan Gao, Yun Xiong, Xinyu Gao, Kangxiang Jia, Jinliu Pan, Yuxi Bi, Yi Dai, Jiawei Sun, Haofen Wang. 2023. <strong>面向大语言模型的检索增强生成：综述。</strong> arXiv 预印本，arXiv:2312.10997。</li>
+<li>Greg Kamradt. 2024. <strong>文本切分的五个层次。</strong></li>
+<li>Tom Kwiatkowski, Jennimaria Palomaki, Olivia Redfield, Michael Collins, Ankur Parikh, Chris Alberti, Danielle Epstein, Illia Polosukhin, Jacob Devlin, Kenton Lee 等. 2019. <strong>Natural Questions：面向问答研究的基准。</strong>《计算语言学协会汇刊》（TACL），7:453–466。</li>
+<li>LangChain. 2024. <strong>如何根据语义相似度切分文本。</strong></li>
+<li>Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel 等. 2020. <strong>面向知识密集型自然语言处理任务的检索增强生成。</strong>《神经信息处理系统进展》，33:9459–9474。</li>
+<li>LlamaIndex. 2024. <strong>语义切分器。</strong></li>
+<li>Chaitanya Malaviya, Subin Lee, Sihao Chen, Elizabeth Sieber, Mark Yatskar, Dan Roth. 2023. <strong>ExpertQA：专家策划的问题与附有出处的答案。</strong> arXiv 预印本，arXiv:2309.07852。</li>
+<li>Zach McCormick. 2024. <strong>解决 RAG 中文本块脱离上下文的问题。</strong></li>
+<li>Niklas Muennighoff, Nouamane Tazi, Loïc Magne, Nils Reimers. 2022. <strong>MTEB：大规模文本嵌入基准。</strong> arXiv 预印本，arXiv:2210.07316。</li>
+<li>T. Nguyen. 2016. <strong>MS MARCO：人工生成的机器阅读理解数据集。</strong> arXiv 预印本，arXiv:1611.09268。</li>
+<li>Mobashir Sadat, Zhengyu Zhou, Lukas Lange, Jun Araki, Arsalan Gundroo, Bingqing Wang, Rakesh R. Menon, Md Rizwan Parvez, Zhe Feng. 2023. <strong>DelucionQA：检测领域专用问答中的幻觉。</strong> arXiv 预印本，arXiv:2312.05200。</li>
+<li>Freda Shi, Xinyun Chen, Kanishka Misra, Nathan Scales, David Dohan, Ed H. Chi, Nathanael Schärli, Denny Zhou. 2023. <strong>大语言模型容易受到无关上下文干扰。</strong> 国际机器学习大会（ICML），31210–31227 页。PMLR。</li>
+<li>Kaitao Song, Xu Tan, Tao Qin, Jianfeng Lu, Tie-Yan Liu. 2020. <strong>MPNet：用于语言理解的掩码与置换预训练。</strong>《神经信息处理系统进展》，33:16857–16867。</li>
+<li>Haitian Sun, William W. Cohen, Ruslan Salakhutdinov. 2021. <strong>ConditionalQA：包含条件式答案的复杂阅读理解数据集。</strong> arXiv 预印本，arXiv:2110.06884。</li>
+<li>Nandan Thakur, Nils Reimers, Andreas Rücklé, Abhishek Srivastava, Iryna Gurevych. 2021. <strong>BEIR：用于信息检索模型零样本评估的异构基准。</strong> arXiv 预印本，arXiv:2104.08663。</li>
+<li>George Tsatsaronis, Michael Schroeder, Georgios Paliouras, Yannis Almirantis, Ion Androutsopoulos, Eric Gaussier, Patrick Gallinari, Thierry Artieres, Michael R. Alvers, Matthias Zschunke 等. 2012. <strong>BioASQ：大规模生物医学语义索引与问答挑战。</strong> 2012 年 AAAI 秋季研讨会系列。</li>
+<li>David Wadden, Shanchuan Lin, Kyle Lo, Lucy Lu Wang, Madeleine van Zuylen, Arman Cohan, Hannaneh Hajishirzi. 2020. <strong>事实还是虚构：验证科学论断。</strong> arXiv 预印本，arXiv:2004.14974。</li>
+<li>Hitesh Wadhwa, Rahul Seetharaman, Somyaa Aggarwal, Reshmi Ghosh, Samyadeep Basu, Soundararajan Srinivasan, Wenlong Zhao, Shreyas Chaudhari, Ehsan Aghazadeh. 2024. <strong>从 RAG 到丰富参数：探究语言模型在事实查询中如何使用外部知识与参数内信息。</strong> arXiv 预印本，arXiv:2406.12824。</li>
+<li>Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William W. Cohen, Ruslan Salakhutdinov, Christopher D. Manning. 2018. <strong>HotpotQA：面向多样化、可解释多跳问答的数据集。</strong> arXiv 预印本，arXiv:1809.09600。</li>
+<li>Wenhao Yu, Hongming Zhang, Xiaoman Pan, Kaixin Ma, Hongwei Wang, Dong Yu. 2023. <strong>Chain-of-Note：增强检索增强语言模型的鲁棒性。</strong> arXiv 预印本，arXiv:2311.09210。</li>
+<li>Dun Zhang. 2024. <strong>Stella。</strong></li>
+<li>Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q. Weinberger, Yoav Artzi. 2019. <strong>BERTScore：使用 BERT 评估文本生成。</strong> arXiv 预印本，arXiv:1904.09675。</li>
+<li>Xinyu Zhang, Nandan Thakur, Odunayo Ogundepo, Ehsan Kamalloo, David Alfonso-Hermelo, Xiaoguang Li, Qun Liu, Mehdi Rezagholizadeh, Jimmy Lin. 2023. <strong>MIRACL：覆盖 18 种不同语言的多语言检索数据集。</strong>《计算语言学协会汇刊》（TACL），11:1114–1131。</li>
+<li>Andrew Zhu, Alyssa Hwang, Liam Dugan, Chris Callison-Burch. 2024. <strong>FanOutQA：面向大语言模型的多跳、多文档问答基准。</strong> 第 62 届 ACL 年会论文集，第 2 卷：短论文，18–37 页。</li>
+</ol>
+<h2>附录 A：基于聚类的语义切分器所用的聚类方法</h2>
+<p>我们分两个阶段，对句子嵌入应用单链接凝聚聚类。首先计算距离矩阵，矩阵中的每个元素表示文档中一对句子的距离。然后，迭代合并距离最小的句子对以形成簇，同时确保合并后的簇不超过预设的最大文本块大小。这个过程持续到所有距离都处理完毕，随后对合并后的簇重新编号。</p>
+<p>为解决实验中遇到的问题，我们进行了以下调整。</p>
+<p><strong>文本块大小约束。</strong> 如果不限制大小，该切分器往往形成一个很大的文本块，同时把少量孤立句子各自留成单独的块。为避免这一情况，我们施加了最大文本块大小阈值，该阈值直接取决于文本块数量和输入文档的句子总数。</p>
+<p><strong>停止聚类的距离阈值。</strong> 为避免随意把孤立句子组合起来，我们引入了距离阈值。一旦超过此阈值，聚类便停止，剩余句子保持未分组状态。本文将该阈值设为 0.5。</p>
+<p>单链接方法的一项局限是需要指定簇数，而没有先验知识时，这很难确定。为缓解这一问题，我们还实验了基于密度的 DBSCAN 方法（Ester et al., 1996）：根据句子嵌入的密度动态调整簇数。DBSCAN 的初始步骤与单链接聚类相同，但用基于密度的聚类替代合并过程。</p>
+<h2>附录 B：超参数</h2>
+<h3>固定大小切分器</h3>
+<p>我们测试两个超参数：文本块数量，以及相邻文本块之间重叠的句子数。文本块数量测试 2 至 10 的整数，以观察不同块大小下的性能变化。重叠句子数测试 0 和 1 两种设置：设为 1 时，相邻文本块有一个句子重叠；设为 0 时没有重叠。</p>
+<h3>基于断点的语义切分器</h3>
+<p>我们测试两个超参数：断点阈值类型与阈值大小。当相邻句子的距离超过预设阈值时，将句子分到不同文本块。我们评估了 Kamradt（2024）中的四种相对阈值类型：</p>
+<ul>
+<li><strong>百分位数（Percentile）</strong>：对距离数组进行线性插值得到的第 $n$ 百分位数。测试值为 <code>[10, 30, 50, 70, 90]</code>。</li>
+<li><strong>标准差（Standard deviation）</strong>：线性插值的均值加上一定倍数的标准差。测试值为 <code>[1, 1.5, 2, 2.5, 3]</code>。</li>
+<li><strong>四分位距（Interquartile）</strong>：线性插值的均值加上一定倍数的四分位距。测试值为 <code>[0.5, 0.75, 1, 1.25, 1.5]</code>。</li>
+<li><strong>梯度（Gradient）</strong>：距离数组的二阶精度差分的第 $n$ 百分位数。测试值为 <code>[10, 30, 50, 70, 90]</code>。</li>
+</ul>
+<p>此外，我们测试了“百分位数”和“梯度”的两个绝对阈值版本：</p>
+<ul>
+<li><strong>距离（Distance）</strong>：余弦距离的阈值。根据经验距离值，测试 <code>[0.1, 0.2, 0.3, 0.4, 0.5]</code>。</li>
+<li><strong>梯度（Gradient）</strong>：基于二阶精度差分的阈值。根据经验梯度值，测试 <code>[0.01, 0.05, 0.1, 0.15, 0.2]</code>。</li>
+</ul>
+<p>注意，基于断点的语义切分器不能直接调节文本块数量或文本块大小。</p>
+<blockquote>
+<p>译者注：“second-order accurate difference”指具有二阶精度的差分近似，不应直接译成“二阶导数”。以上阈值公式的文字表述按原文保留。</p>
+</blockquote>
+<h3>基于聚类的语义切分器</h3>
+<p>对于单链接切分器，我们测试两个超参数：控制总体距离计算中位置距离权重的 $\lambda$，以及与固定大小切分器相同的文本块数量。$\lambda$ 测试 <code>[0, 0.25, 0.5, 0.75, 1]</code>。</p>
+<p>对于 DBSCAN 切分器，我们评估三个超参数：与单链接方法相同的 $\lambda$；EPS，即两个样本被视为处于同一邻域所允许的最大距离；以及 <code>min_samples</code>，即一个点被判定为核心点时，其邻域内所需的最少样本数。EPS 测试 <code>[0.1, 0.2, 0.3, 0.4, 0.5]</code>；<code>min_samples</code> 测试 <code>[1, 2, 3, 4, 5]</code>。</p>
+<h2>附录 C：文档拼接与数据集选择</h2>
+<p><strong>表 4：文档检索数据集。<code>#D</code> 为选出的长文档数量；<code>S/D</code> 为拼接前每篇文档的平均句子数；<code>S/D(*)</code> 为拼接后每篇长文档的平均句子数；<code>D/Q</code> 为每个查询平均相关长文档数。合成数据集标为“合成”（原表单元格使用 Stitched，即“拼接”）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th>类型</th>
+<th>划分</th>
+<th style="text-align:right">#D</th>
+<th style="text-align:right">S/D(*)</th>
+<th style="text-align:right">S/D</th>
+<th style="text-align:right">D/Q</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl（Zhang et al., 2023）</td>
+<td>拼接</td>
+<td>训练集</td>
+<td style="text-align:right">1184</td>
+<td style="text-align:right">102</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">3</td>
+</tr>
+<tr>
+<td>NQ（Kwiatkowski et al., 2019）</td>
+<td>拼接</td>
+<td>测试集</td>
+<td style="text-align:right">488</td>
+<td style="text-align:right">88</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Scidocs（Cohan et al., 2020）</td>
+<td>拼接</td>
+<td>测试集</td>
+<td style="text-align:right">1692</td>
+<td style="text-align:right">88</td>
+<td style="text-align:right">8</td>
+<td style="text-align:right">5</td>
+</tr>
+<tr>
+<td>Scifact（Wadden et al., 2020）</td>
+<td>拼接</td>
+<td>测试集</td>
+<td style="text-align:right">420</td>
+<td style="text-align:right">99</td>
+<td style="text-align:right">8</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>BioASQ（Tsatsaronis et al., 2012）</td>
+<td>拼接</td>
+<td>训练集</td>
+<td style="text-align:right">2368</td>
+<td style="text-align:right">93</td>
+<td style="text-align:right">9</td>
+<td style="text-align:right">6</td>
+</tr>
+<tr>
+<td>NFCorpus（Boteva et al., 2016）</td>
+<td>拼接</td>
+<td>测试集</td>
+<td style="text-align:right">364</td>
+<td style="text-align:right">118</td>
+<td style="text-align:right">12</td>
+<td style="text-align:right">37</td>
+</tr>
+<tr>
+<td>HotpotQA（Yang et al., 2018）</td>
+<td>原始</td>
+<td>测试集</td>
+<td style="text-align:right">800</td>
+<td style="text-align:right">20</td>
+<td style="text-align:right">20</td>
+<td style="text-align:right">2</td>
+</tr>
+<tr>
+<td>MSMARCO（Nguyen, 2016）</td>
+<td>原始</td>
+<td>开发集</td>
+<td style="text-align:right">398</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>ConditionalQA（Sun et al., 2021）</td>
+<td>原始</td>
+<td>开发集</td>
+<td style="text-align:right">652</td>
+<td style="text-align:right">120</td>
+<td style="text-align:right">120</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Qasper（Dasigi et al., 2021）</td>
+<td>原始</td>
+<td>测试集</td>
+<td style="text-align:right">416</td>
+<td style="text-align:right">130</td>
+<td style="text-align:right">130</td>
+<td style="text-align:right">1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 5：证据检索与答案生成数据集。<code>#D</code> 为选出的长文档数量；<code>S/D</code> 为每篇长文档平均句子数；<code>E/Q</code> 为每个查询平均证据句子数。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th>划分</th>
+<th style="text-align:right">#D</th>
+<th style="text-align:right">S/D</th>
+<th style="text-align:right">E/Q</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA（Malaviya et al., 2023）</td>
+<td>测试集</td>
+<td style="text-align:right">777</td>
+<td style="text-align:right">20</td>
+<td style="text-align:right">12</td>
+</tr>
+<tr>
+<td>DelucionQA（Sadat et al., 2023）</td>
+<td>测试集</td>
+<td style="text-align:right">235</td>
+<td style="text-align:right">23</td>
+<td style="text-align:right">9</td>
+</tr>
+<tr>
+<td>TechQA（Castelli et al., 2019）</td>
+<td>测试集</td>
+<td style="text-align:right">648</td>
+<td style="text-align:right">49</td>
+<td style="text-align:right">15</td>
+</tr>
+<tr>
+<td>ConditionalQA（Sun et al., 2021）</td>
+<td>开发集</td>
+<td style="text-align:right">652</td>
+<td style="text-align:right">120</td>
+<td style="text-align:right">5</td>
+</tr>
+<tr>
+<td>Qasper（Dasigi et al., 2021）</td>
+<td>测试集</td>
+<td style="text-align:right">416</td>
+<td style="text-align:right">130</td>
+<td style="text-align:right">4</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 6：实验使用的嵌入模型。“排名”为模型在 MTEB 排行榜（Muennighoff et al., 2022）上的名次；“模型规模”为参数量，以百万为单位。</strong></p>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th style="text-align:right">排名</th>
+<th style="text-align:right">模型规模（百万参数）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>dunzhang/stella_en_1.5B_v5（Zhang, 2024）</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">1543</td>
+</tr>
+<tr>
+<td>BAAI/bge-large-en-v1.5（Chen et al., 2024）</td>
+<td style="text-align:right">36</td>
+<td style="text-align:right">335</td>
+</tr>
+<tr>
+<td>all-mpnet-base-v2（Song et al., 2020）</td>
+<td style="text-align:right">105</td>
+<td style="text-align:right">110</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>译者注：表中排名是论文所用的历史排名，并非当前排名。</p>
+</blockquote>
+<p>大多数文档检索数据集由短文档组成，每篇不到 20 个句子，不足以有效评估切分器。最初，我们在 BEIR（Thakur et al., 2021）的数据集上开展实验，但文档过短，没有显示出切分带来的性能改善。短文档缺乏足够复杂性，无法评估切分器如何在更长文本跨度中处理上下文和语义连贯性。</p>
+<p>为克服这一限制，我们将现有数据集中的短文档拼接为长文档。每个拼接文档约含 100 个句子，以更好地反映现实长文档检索场景。在这一设置中，只要一篇短文档与查询相关，其所属的拼接长文档就被视为相关。这让文档检索的评价粒度变粗，也促使我们增加证据检索实验，以进行更细粒度的评估。</p>
+<p>我们根据文档主题和查询类型的多样性选择数据集。特定关键词查询往往有利于词法检索，这可能削弱语义检索方法的表现。文档检索任务采用表 4 所列数据集，其中包括来自 BEIR（Thakur et al., 2021）的 NFCorpus、NQ、HotpotQA、Scidocs 和 Scifact。</p>
+<p>证据检索与答案生成使用表 5 所列数据集，未使用拼接文档。</p>
+<h2>附录 D：评估指标的选择</h2>
+<h3>文档检索</h3>
+<p>检索可以看作分类与排序两个任务。本文中，只要检索到了某篇文档的任一文本块，就认为该文档已被检索到，不考虑查询与该文本块的相关性分数。这种做法把重点从查询—文本块相关性转向查询—文档评估，减弱了 NDCG、MAP、MRR 等排序指标的作用。</p>
+<ul>
+<li><strong>Recall@k</strong>：前 $k$ 个文本块所覆盖的相关文档数，占全部相关文档数的比例。</li>
+<li><strong>Precision@k</strong>：前 $k$ 个文本块所覆盖的相关文档数，占所有检索到的文档数的比例。</li>
+<li><strong>F1@k</strong>：精确率与召回率的调和平均数。</li>
+</ul>
+<p>典型检索实验往往以召回率为主。但我们的设置需要在召回率、精确率和 F1 之间取得平衡。由于检索块数固定，而检索文档数会变化，因此精确率和 F1 很重要。例如，对一个只有一篇相关文档的查询，检索出五个文本块：如果五块均来自该文档，召回率和精确率都是 100%；如果只有一个块相关，其余块来自不相关文档，召回率仍为 100%，但精确率下降，检索质量便有所不同。在这种情况下，F1 通过平衡召回率与精确率，更好地刻画了这一权衡。</p>
+<h3>证据检索</h3>
+<p>在证据检索中，单独考察召回率或精确率时，它们都对文本块大小敏感。较大的文本块更可能包含证据句子，因此通常召回率更高；但它们也可能包含更多无关句子，因此精确率更低。较大文本块往往并不理想，因为会引入更多噪声。例如，“不切分”方法把整篇文档作为一个文本块，因此始终具有最高召回率和最低精确率。F1 有助于平衡这些偏差，更好地反映切分器能否生成大小适当、能够捕获相关证据的文本块。因此，我们的分析重点是 F1。</p>
+<ul>
+<li><strong>Recall@k</strong>：检索到的证据句子数，占全部证据句子数的比例。</li>
+<li><strong>Precision@k</strong>：检索到的证据句子数，占全部检索句子数的比例。</li>
+<li><strong>F1@k</strong>：精确率与召回率的调和平均数。</li>
+</ul>
+<blockquote>
+<p>译者注：“不切分始终具有最高召回率和最低精确率”是原文的概括性表述。实际更改检索单元也可能改变排序与召回到的文档，因而并非对任意系统都成立的定理。</p>
+</blockquote>
+<h3>答案生成</h3>
+<p>我们使用 BERTScore 衡量生成答案与真实答案的语义相似度，并计算查询与生成答案之间的余弦相似度。</p>
+<ul>
+<li><strong>BERTScore（Zhang et al., 2019）</strong>：使用上下文化嵌入衡量生成答案与参考答案的语义相似度。我们使用最佳模型 <code>microsoft/deberta-xlarge-mnli</code> 计算该分数。</li>
+<li><strong>QA Similarity</strong>：查询与生成答案之间的余弦相似度，用于衡量答案相对于原始查询的一致性与正确性。</li>
+</ul>
+<blockquote>
+<p>译者注：“最佳模型”和 QA Similarity 的作用为原文表述；问题与答案语义相近并不直接证明答案事实正确或获得证据支持。</p>
+</blockquote>
+<h2>附录 E：补充结果与分析</h2>
+<p>本节给出第 4 节未报告的完整结果及分析。文档检索在全部 $k$ 值下的 F1 见表 20；证据检索在全部 $k$ 值下的 F1 见表 21。</p>
+<h3>E.1 答案生成结果</h3>
+<p>如表 7 所示，按照问答余弦相似度，语义切分器略优于固定大小切分器。但差异非常小，难以从结果中得出明确结论。</p>
+<p><strong>表 7：答案生成的问答余弦相似度。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">0.81</td>
+<td style="text-align:right">0.82</td>
+<td style="text-align:right">0.81</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">0.82</td>
+<td style="text-align:right">0.82</td>
+<td style="text-align:right">0.82</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">0.89</td>
+<td style="text-align:right">0.88</td>
+<td style="text-align:right">0.89</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">0.36</td>
+<td style="text-align:right">0.36</td>
+<td style="text-align:right">0.36</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">0.44</td>
+<td style="text-align:right">0.44</td>
+<td style="text-align:right">0.44</td>
+</tr>
+</tbody>
+</table>
+<h3>E.2 嵌入模型的影响</h3>
+<p>嵌入模型的选择显著影响检索性能，所测试模型见表 6。在证据检索实验中，<code>BAAI/bge-large-en-v1.5</code> 的 F1@1 比 <code>all-mpnet-base-v2</code> 高 1.06%，F1@10 高 1.32%，两者均在 5% 水平上达到统计显著性。<code>dunzhang/stella_en_1.5B_v5</code> 相对于 <code>BAAI/bge-large-en-v1.5</code>，在全部 F1 值上的平均提升为 7.44%。这一结果具有统计显著性，$p=1.59\times10^{-5}$，凸显了嵌入模型在检索任务中的关键作用。三种嵌入模型在证据检索中的完整 F1 结果见表 21–23。</p>
+<blockquote>
+<p>译者注：这里保留原文的百分号；原文此处没有明确区分相对提升百分比与绝对百分点，故不将其自行改写为“百分点”。</p>
+</blockquote>
+<h3>E.3 超参数分析</h3>
+<p>图 2–5 中的所有分数都经过归一化，并在数据集和 $k$ 值之间求平均。我们的目标是找出能在不同数据集和 $k$ 值下表现良好的切分器配置，因此对结果取平均是合理的。每行图的标题指出正在分析的切分器和实验，每个子图的标题给出固定的超参数。纵轴是指标分数，横轴是正在分析的超参数。蓝线表示召回率，橙线表示精确率，绿线表示 F1。</p>
+<p><strong>基于聚类的语义切分器：单链接。</strong> 随着 <code>n_clusters</code> 增加，平均文本块大小下降。这对文档检索的影响较小，因为不论大小如何，文本块都会映射到来源文档。但图 2 显示，文本块变小时，召回率保持稳定，精确率却显著上升；即使在 $\lambda=1$，即固定大小切分器的情况下也是如此。这是因为检索到了更多来自同一文档的小块，导致检索出的文档总数下降。</p>
+<p>对于 $\lambda$，没有观察到明确趋势，表明调整语义与位置信息之间的权重，并不会显著影响文档检索。这提示两种可能：（1）位置接近的句子通常也在语义上相似；（2）由不连续但语义相似的句子组成的文本块，并不能改善文档检索。</p>
+<p>图 2 中，证据检索表现出相反趋势。块大小下降时，检索到的句子数量减少，检索到证据句子的机会降低，召回率因而急剧下降。因此，F1 相对保持不变。</p>
+<p>此外，图 2 显示，随着 $\lambda$ 接近 1（代表固定大小切分器），F1 分数（绿线）逐渐上升。这说明位置信息对检索性能的贡献大于语义相似度，可能是因为核心证据句子通常彼此接近。</p>
+<p><strong>基于聚类的语义切分器：DBSCAN。</strong> 随着 EPS 增大，将样本划入同一簇的条件放宽，平均文本块大小随之增大。如图 3 所示，这分别导致文档检索精确率下降和证据检索召回率上升，与单链接情况相似。</p>
+<p><strong>基于断点的语义切分器。</strong> 随着相邻句子间的距离阈值增大，断点数量减少，文本块变大。无论采用哪种阈值，它最终都会影响块大小。图 4 中可以观察到与图 2、图 3 相似的趋势：块大小增加时，两项检索任务的精确率均下降，而证据检索的召回率迅速增加。标准差阈值对应的上升趋势是预期之内的，因为基于标准差得到的阈值通常高于基于百分位数或四分位距得到的阈值。</p>
+<p><strong>固定大小切分器。</strong> 图 5 给出其结果，趋势与其他切分器相似。在相邻块之间增加一个重叠句子，并未明显改善性能。这表明单个重叠句子不足以显著增强上下文连贯性。</p>
+<h3>E.4 文本块检查</h3>
+<p>我们检查输出文本块，以：（1）确认不同切分器按预期工作；（2）探究性能差异的原因。由于文档长度适中，我们选择了 BEIR 的 HotpotQA 数据集（Thakur et al., 2021；Yang et al., 2018）。我们随机抽取五篇文档，将前四篇拼接为一篇文档（图 6），第五篇保留为普通文档（图 7）。文档 ID 为：</p>
+<ul>
+<li>拼接文档：<code>44547136</code>、<code>14115210</code>、<code>5580754</code>、<code>54045118</code>。</li>
+<li>普通文档：<code>30214079</code>。</li>
+</ul>
+<p><strong>拼接文档的检查。</strong> 图 6 中，文档 1 和文档 3 各有四个句子，文档 2 和文档 4 分别有三个和五个句子。固定大小切分器忽略语义关系和文档结构，经常把句子放错文本块，这种错误还会传播到后续文本块。例如，文档 3 的一个句子被附加到文档 2，体现了固定大小切分在包含多个短片段的拼接文档上的局限，也解释了其在这类条件下的较差表现。不过，只需在应用固定大小切分之前，先把文档按结构划分为章节，就可以解决这一问题。</p>
+<p>相比之下，两种语义切分器在拼接文档上表现更好，但仍存在问题。基于聚类的切分器犯了一个错误：把句子 16（文档 4 的最后一句）分入文本块 2。原因在于，尽管位置距离很大，语义相似度却很高，导致该句被错误纳入。由于不像固定大小和基于断点的切分器那样考虑位置结构，基于聚类的切分器经常混合不同文档的句子。这在多文档任务中可能有用（Bolotova-Baranova et al., 2023；Zhu et al., 2024），但在这里会造成问题，使其在拼接大量短文档时表现较差。</p>
+<p>基于断点的切分器也会出错。与固定大小切分器一样，它可能因为某句与邻近句子的语义相似度较低，将该句分到另一个块；例如句子 4 被移到文本块 2。这说明式（1）所用联合距离的优势：它帮助基于聚类的切分器避免了这一错误。此外，块大小很难控制：较高阈值会产生过大的块，较低阈值则产生缺少上下文的单句块，例如文本块 4 中没有独立意义的“名称绑定”短语。</p>
+<p><strong>普通文档的检查。</strong> 图 7 中，介绍“Interact 家用计算机”的文档自然分为四节，但这种结构没有提供给切分器。固定大小切分器重复了在拼接文档中出现的问题，有时将相邻章节的句子放进同一个块。只需预先按章节拆分文档，这种错误就能轻易修正。</p>
+<p>虽然这个例子没有充分展现基于聚类的切分器的局限，但仍说明了仅依赖语义相似度的缺点。句子 8–9 虽属于文本块 3，却因语义相似度较高被分入文本块 2。这表明，即使加入位置信息，基于语义的切分仍可能把共享上下文的内容分错组；这些句子显然讨论的是 Interact 家用计算机的销售。</p>
+<p>对于基于断点的切分器，在拼接文档中出现的错误更加明显。尽管对每种切分器使用了使错误最少的最佳配置，基于断点的切分器仍产生只包含一个句子的块，例如文本块 3 和文本块 5。此外，将都在讨论“Interact Electronics Inc”的句子 5 与句子 6 分开，是一个尤其不合理的决定。这些例子说明，单凭语义相似度并不能可靠地实现有效切分，其作用可能还不如直接使用位置信息。</p>
+<h3>E.5 嵌入模型对文档检索和答案生成的影响</h3>
+<p>除 <code>dunzhang/stella_en_1.5B_v5</code> 外，我们还测试了 MTEB 基准中的两种嵌入模型：<code>BAAI/bge-large-en-v1.5</code> 和 <code>all-mpnet-base-v2</code>。三种切分策略分别标为固定大小、断点和聚类。</p>
+<h4>E.5.1 文档检索</h4>
+<p>我们报告另外两种嵌入模型在文档检索中的 F1@k 分数（%）。标为“拼接”的数据集原本包含短文档；我们将其拼接为较长文档，以增加测试集的多样性。</p>
+<ul>
+<li><strong>观察</strong>：在原始文档较短、经我们拼接形成长文档的数据集上，基于断点的切分具有明显优势。相较之下，在原生长文档数据集上，固定大小切分表现更好。</li>
+<li><strong>解释</strong>：我们拼接的短文档很可能属于不相关主题。因此，受到 LangChain 和 LlamaIndex 社区厚望的基于断点的切分，在原生长文档上并不具备优势。</li>
+<li><strong>建议</strong>：实际应用中直接使用固定大小切分即可。</li>
+</ul>
+<h5>使用 BAAI/bge-large-en-v1.5 作为嵌入模型</h5>
+<p><strong>表 8：F1@1（%）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl （拼接）</td>
+<td style="text-align:right">59.81</td>
+<td style="text-align:right">62.27</td>
+<td style="text-align:right">61.98</td>
+</tr>
+<tr>
+<td>NQ （拼接）</td>
+<td style="text-align:right">81.59</td>
+<td style="text-align:right">85.62</td>
+<td style="text-align:right">81.60</td>
+</tr>
+<tr>
+<td>Scidocs （拼接）</td>
+<td style="text-align:right">6.37</td>
+<td style="text-align:right">7.62</td>
+<td style="text-align:right">8.03</td>
+</tr>
+<tr>
+<td>Scifact （拼接）</td>
+<td style="text-align:right">44.02</td>
+<td style="text-align:right">51.98</td>
+<td style="text-align:right">46.58</td>
+</tr>
+<tr>
+<td>BioASQ （拼接）</td>
+<td style="text-align:right">48.36</td>
+<td style="text-align:right">52.56</td>
+<td style="text-align:right">45.83</td>
+</tr>
+<tr>
+<td>NFCorpus （拼接）</td>
+<td style="text-align:right">10.35</td>
+<td style="text-align:right">11.02</td>
+<td style="text-align:right">11.43</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">66.67</td>
+<td style="text-align:right">66.67</td>
+<td style="text-align:right">66.67</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">95.00</td>
+<td style="text-align:right">95.00</td>
+<td style="text-align:right">95.00</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">76.38</td>
+<td style="text-align:right">74.54</td>
+<td style="text-align:right">76.01</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">92.45</td>
+<td style="text-align:right">90.84</td>
+<td style="text-align:right">90.84</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 9：F1@2（%）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl （拼接）</td>
+<td style="text-align:right">70.10</td>
+<td style="text-align:right">78.87</td>
+<td style="text-align:right">69.45</td>
+</tr>
+<tr>
+<td>NQ （拼接）</td>
+<td style="text-align:right">55.03</td>
+<td style="text-align:right">66.53</td>
+<td style="text-align:right">52.36</td>
+</tr>
+<tr>
+<td>Scidocs （拼接）</td>
+<td style="text-align:right">14.13</td>
+<td style="text-align:right">16.39</td>
+<td style="text-align:right">16.80</td>
+</tr>
+<tr>
+<td>Scifact （拼接）</td>
+<td style="text-align:right">37.98</td>
+<td style="text-align:right">52.82</td>
+<td style="text-align:right">38.38</td>
+</tr>
+<tr>
+<td>BioASQ （拼接）</td>
+<td style="text-align:right">61.82</td>
+<td style="text-align:right">62.26</td>
+<td style="text-align:right">61.53</td>
+</tr>
+<tr>
+<td>NFCorpus （拼接）</td>
+<td style="text-align:right">16.36</td>
+<td style="text-align:right">17.56</td>
+<td style="text-align:right">18.53</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">91.43</td>
+<td style="text-align:right">90.87</td>
+<td style="text-align:right">90.46</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">93.26</td>
+<td style="text-align:right">93.56</td>
+<td style="text-align:right">92.64</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">70.75</td>
+<td style="text-align:right">68.78</td>
+<td style="text-align:right">67.83</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">89.18</td>
+<td style="text-align:right">87.62</td>
+<td style="text-align:right">88.65</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>译者注：原 PDF 表 9 的标题确实是 F1@2，与第 3.1 节列出的 k＝1、3、5、10 不一致；此处照录原标注，不推断其实际 k 值。</p>
+</blockquote>
+<p><strong>表 10：F1@5（%）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl （拼接）</td>
+<td style="text-align:right">63.78</td>
+<td style="text-align:right">76.72</td>
+<td style="text-align:right">60.96</td>
+</tr>
+<tr>
+<td>NQ （拼接）</td>
+<td style="text-align:right">48.34</td>
+<td style="text-align:right">57.05</td>
+<td style="text-align:right">45.95</td>
+</tr>
+<tr>
+<td>Scidocs （拼接）</td>
+<td style="text-align:right">18.06</td>
+<td style="text-align:right">18.47</td>
+<td style="text-align:right">20.49</td>
+</tr>
+<tr>
+<td>Scifact （拼接）</td>
+<td style="text-align:right">29.24</td>
+<td style="text-align:right">45.00</td>
+<td style="text-align:right">30.36</td>
+</tr>
+<tr>
+<td>BioASQ （拼接）</td>
+<td style="text-align:right">61.66</td>
+<td style="text-align:right">66.36</td>
+<td style="text-align:right">61.39</td>
+</tr>
+<tr>
+<td>NFCorpus （拼接）</td>
+<td style="text-align:right">18.77</td>
+<td style="text-align:right">19.79</td>
+<td style="text-align:right">19.75</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">87.36</td>
+<td style="text-align:right">76.05</td>
+<td style="text-align:right">78.18</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">90.93</td>
+<td style="text-align:right">90.09</td>
+<td style="text-align:right">89.51</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">54.75</td>
+<td style="text-align:right">54.45</td>
+<td style="text-align:right">54.59</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">81.03</td>
+<td style="text-align:right">76.33</td>
+<td style="text-align:right">77.15</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 11：F1@10（%）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl （拼接）</td>
+<td style="text-align:right">45.19</td>
+<td style="text-align:right">61.50</td>
+<td style="text-align:right">41.94</td>
+</tr>
+<tr>
+<td>NQ （拼接）</td>
+<td style="text-align:right">21.34</td>
+<td style="text-align:right">30.81</td>
+<td style="text-align:right">20.19</td>
+</tr>
+<tr>
+<td>Scidocs （拼接）</td>
+<td style="text-align:right">17.19</td>
+<td style="text-align:right">19.89</td>
+<td style="text-align:right">19.52</td>
+</tr>
+<tr>
+<td>Scifact （拼接）</td>
+<td style="text-align:right">19.57</td>
+<td style="text-align:right">31.27</td>
+<td style="text-align:right">19.91</td>
+</tr>
+<tr>
+<td>BioASQ （拼接）</td>
+<td style="text-align:right">54.22</td>
+<td style="text-align:right">62.65</td>
+<td style="text-align:right">53.35</td>
+</tr>
+<tr>
+<td>NFCorpus （拼接）</td>
+<td style="text-align:right">21.73</td>
+<td style="text-align:right">21.73</td>
+<td style="text-align:right">22.27</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">54.24</td>
+<td style="text-align:right">43.43</td>
+<td style="text-align:right">43.80</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">78.90</td>
+<td style="text-align:right">76.65</td>
+<td style="text-align:right">68.90</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">34.73</td>
+<td style="text-align:right">33.24</td>
+<td style="text-align:right">33.55</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">58.67</td>
+<td style="text-align:right">46.86</td>
+<td style="text-align:right">42.97</td>
+</tr>
+</tbody>
+</table>
+<h5>使用 SentenceBert/all-mpnet-base-v2 作为嵌入模型</h5>
+<p><strong>表 12：F1@1（%）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl （拼接）</td>
+<td style="text-align:right">60.13</td>
+<td style="text-align:right">62.97</td>
+<td style="text-align:right">61.08</td>
+</tr>
+<tr>
+<td>NQ （拼接）</td>
+<td style="text-align:right">81.53</td>
+<td style="text-align:right">88.90</td>
+<td style="text-align:right">81.16</td>
+</tr>
+<tr>
+<td>Scidocs （拼接）</td>
+<td style="text-align:right">5.40</td>
+<td style="text-align:right">5.00</td>
+<td style="text-align:right">5.33</td>
+</tr>
+<tr>
+<td>Scifact （拼接）</td>
+<td style="text-align:right">42.68</td>
+<td style="text-align:right">50.70</td>
+<td style="text-align:right">45.36</td>
+</tr>
+<tr>
+<td>BioASQ （拼接）</td>
+<td style="text-align:right">40.68</td>
+<td style="text-align:right">44.00</td>
+<td style="text-align:right">38.75</td>
+</tr>
+<tr>
+<td>NFCorpus （拼接）</td>
+<td style="text-align:right">7.21</td>
+<td style="text-align:right">8.21</td>
+<td style="text-align:right">6.71</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">62.67</td>
+<td style="text-align:right">62.00</td>
+<td style="text-align:right">62.67</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">98.00</td>
+<td style="text-align:right">94.00</td>
+<td style="text-align:right">98.00</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">72.69</td>
+<td style="text-align:right">71.96</td>
+<td style="text-align:right">71.59</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">88.95</td>
+<td style="text-align:right">85.98</td>
+<td style="text-align:right">87.60</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 13：F1@3（%）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl （拼接）</td>
+<td style="text-align:right">64.61</td>
+<td style="text-align:right">73.95</td>
+<td style="text-align:right">67.21</td>
+</tr>
+<tr>
+<td>NQ （拼接）</td>
+<td style="text-align:right">53.30</td>
+<td style="text-align:right">65.94</td>
+<td style="text-align:right">50.86</td>
+</tr>
+<tr>
+<td>Scidocs （拼接）</td>
+<td style="text-align:right">13.97</td>
+<td style="text-align:right">14.36</td>
+<td style="text-align:right">16.42</td>
+</tr>
+<tr>
+<td>Scifact （拼接）</td>
+<td style="text-align:right">36.18</td>
+<td style="text-align:right">51.07</td>
+<td style="text-align:right">36.59</td>
+</tr>
+<tr>
+<td>BioASQ （拼接）</td>
+<td style="text-align:right">49.54</td>
+<td style="text-align:right">52.62</td>
+<td style="text-align:right">48.14</td>
+</tr>
+<tr>
+<td>NFCorpus （拼接）</td>
+<td style="text-align:right">12.39</td>
+<td style="text-align:right">13.55</td>
+<td style="text-align:right">14.40</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">78.69</td>
+<td style="text-align:right">76.53</td>
+<td style="text-align:right">75.40</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">94.65</td>
+<td style="text-align:right">93.19</td>
+<td style="text-align:right">94.28</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">72.63</td>
+<td style="text-align:right">69.00</td>
+<td style="text-align:right">68.69</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">87.75</td>
+<td style="text-align:right">85.25</td>
+<td style="text-align:right">86.97</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 14：F1@5（%）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl （拼接）</td>
+<td style="text-align:right">60.20</td>
+<td style="text-align:right">69.93</td>
+<td style="text-align:right">59.72</td>
+</tr>
+<tr>
+<td>NQ （拼接）</td>
+<td style="text-align:right">37.05</td>
+<td style="text-align:right">49.57</td>
+<td style="text-align:right">36.60</td>
+</tr>
+<tr>
+<td>Scidocs （拼接）</td>
+<td style="text-align:right">15.18</td>
+<td style="text-align:right">15.68</td>
+<td style="text-align:right">17.85</td>
+</tr>
+<tr>
+<td>Scifact （拼接）</td>
+<td style="text-align:right">27.74</td>
+<td style="text-align:right">43.76</td>
+<td style="text-align:right">28.99</td>
+</tr>
+<tr>
+<td>BioASQ （拼接）</td>
+<td style="text-align:right">47.42</td>
+<td style="text-align:right">56.07</td>
+<td style="text-align:right">47.72</td>
+</tr>
+<tr>
+<td>NFCorpus （拼接）</td>
+<td style="text-align:right">14.71</td>
+<td style="text-align:right">16.34</td>
+<td style="text-align:right">16.15</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">71.73</td>
+<td style="text-align:right">65.09</td>
+<td style="text-align:right">65.84</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">91.46</td>
+<td style="text-align:right">89.88</td>
+<td style="text-align:right">90.05</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">60.46</td>
+<td style="text-align:right">56.10</td>
+<td style="text-align:right">60.44</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">79.47</td>
+<td style="text-align:right">78.99</td>
+<td style="text-align:right">79.46</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 15：F1@10（%）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl （拼接）</td>
+<td style="text-align:right">43.07</td>
+<td style="text-align:right">51.27</td>
+<td style="text-align:right">41.25</td>
+</tr>
+<tr>
+<td>NQ （拼接）</td>
+<td style="text-align:right">21.49</td>
+<td style="text-align:right">31.18</td>
+<td style="text-align:right">20.83</td>
+</tr>
+<tr>
+<td>Scidocs （拼接）</td>
+<td style="text-align:right">16.82</td>
+<td style="text-align:right">18.96</td>
+<td style="text-align:right">19.50</td>
+</tr>
+<tr>
+<td>Scifact （拼接）</td>
+<td style="text-align:right">18.48</td>
+<td style="text-align:right">29.28</td>
+<td style="text-align:right">18.78</td>
+</tr>
+<tr>
+<td>BioASQ （拼接）</td>
+<td style="text-align:right">42.58</td>
+<td style="text-align:right">54.47</td>
+<td style="text-align:right">41.28</td>
+</tr>
+<tr>
+<td>NFCorpus （拼接）</td>
+<td style="text-align:right">18.16</td>
+<td style="text-align:right">19.81</td>
+<td style="text-align:right">19.14</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">47.21</td>
+<td style="text-align:right">40.56</td>
+<td style="text-align:right">40.06</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">79.51</td>
+<td style="text-align:right">78.62</td>
+<td style="text-align:right">67.78</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">38.04</td>
+<td style="text-align:right">36.63</td>
+<td style="text-align:right">36.44</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">61.31</td>
+<td style="text-align:right">47.64</td>
+<td style="text-align:right">51.62</td>
+</tr>
+</tbody>
+</table>
+<h4>E.5.2 答案生成</h4>
+<p>我们报告另外两种嵌入模型在答案生成中的 BERTScore 和问答相似度分数。</p>
+<ul>
+<li><strong>结论要点</strong>：实际应用中直接使用固定大小切分即可。基于断点和基于聚类的方法没有优势。</li>
+</ul>
+<h5>使用 BAAI/bge-large-en-v1.5 作为嵌入模型</h5>
+<p><strong>表 16：BERTScore。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">0.68</td>
+<td style="text-align:right">0.67</td>
+<td style="text-align:right">0.67</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">0.76</td>
+<td style="text-align:right">0.78</td>
+<td style="text-align:right">0.76</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">0.69</td>
+<td style="text-align:right">0.67</td>
+<td style="text-align:right">0.68</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">0.40</td>
+<td style="text-align:right">0.39</td>
+<td style="text-align:right">0.39</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">0.50</td>
+<td style="text-align:right">0.50</td>
+<td style="text-align:right">0.49</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 17：问答相似度。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">0.86</td>
+<td style="text-align:right">0.86</td>
+<td style="text-align:right">0.85</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">0.82</td>
+<td style="text-align:right">0.83</td>
+<td style="text-align:right">0.83</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">0.90</td>
+<td style="text-align:right">0.90</td>
+<td style="text-align:right">0.89</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">0.35</td>
+<td style="text-align:right">0.36</td>
+<td style="text-align:right">0.36</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">0.46</td>
+<td style="text-align:right">0.46</td>
+<td style="text-align:right">0.45</td>
+</tr>
+</tbody>
+</table>
+<h5>使用 SentenceBert/all-mpnet-base-v2 作为嵌入模型</h5>
+<p><strong>表 18：BERTScore。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">0.67</td>
+<td style="text-align:right">0.66</td>
+<td style="text-align:right">0.66</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">0.76</td>
+<td style="text-align:right">0.76</td>
+<td style="text-align:right">0.76</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">0.68</td>
+<td style="text-align:right">0.68</td>
+<td style="text-align:right">0.68</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">0.40</td>
+<td style="text-align:right">0.40</td>
+<td style="text-align:right">0.41</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">0.50</td>
+<td style="text-align:right">0.50</td>
+<td style="text-align:right">0.50</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 19：问答相似度。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">0.84</td>
+<td style="text-align:right">0.84</td>
+<td style="text-align:right">0.84</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">0.81</td>
+<td style="text-align:right">0.82</td>
+<td style="text-align:right">0.83</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">0.86</td>
+<td style="text-align:right">0.87</td>
+<td style="text-align:right">0.87</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">0.34</td>
+<td style="text-align:right">0.35</td>
+<td style="text-align:right">0.34</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">0.45</td>
+<td style="text-align:right">0.41</td>
+<td style="text-align:right">0.40</td>
+</tr>
+</tbody>
+</table>
+<h3>附录补充数据表：所有 k 值的结果</h3>
+<blockquote>
+<p>译者排版说明：原表 20–23 为横向宽表。下文转为“数据集 × k”逐行排列，全部数值保留。列名“固定大小／断点语义／聚类语义”分别对应 Fixed-size／Breakpoint／Clustering。</p>
+</blockquote>
+<p><strong>表 20：文档检索在所有 k 值下的 F1（%）。带 * 的数据集为拼接数据集，按拼接前平均句子数升序排列。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">k</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl*</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">67.55</td>
+<td style="text-align:right">69.73</td>
+<td style="text-align:right">68.61</td>
+</tr>
+<tr>
+<td>Miracl*</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">76.03</td>
+<td style="text-align:right">83.55</td>
+<td style="text-align:right">75.24</td>
+</tr>
+<tr>
+<td>Miracl*</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">69.45</td>
+<td style="text-align:right">81.89</td>
+<td style="text-align:right">67.35</td>
+</tr>
+<tr>
+<td>Miracl*</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">49.89</td>
+<td style="text-align:right">67.83</td>
+<td style="text-align:right">46.59</td>
+</tr>
+<tr>
+<td>NQ*</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">92.92</td>
+<td style="text-align:right">92.36</td>
+<td style="text-align:right">88.63</td>
+</tr>
+<tr>
+<td>NQ*</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">62.29</td>
+<td style="text-align:right">83.37</td>
+<td style="text-align:right">60.29</td>
+</tr>
+<tr>
+<td>NQ*</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">43.79</td>
+<td style="text-align:right">63.93</td>
+<td style="text-align:right">41.01</td>
+</tr>
+<tr>
+<td>NQ*</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">24.02</td>
+<td style="text-align:right">36.18</td>
+<td style="text-align:right">22.56</td>
+</tr>
+<tr>
+<td>Scidocs*</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">7.60</td>
+<td style="text-align:right">7.73</td>
+<td style="text-align:right">10.40</td>
+</tr>
+<tr>
+<td>Scidocs*</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">15.16</td>
+<td style="text-align:right">14.92</td>
+<td style="text-align:right">18.93</td>
+</tr>
+<tr>
+<td>Scidocs*</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">16.82</td>
+<td style="text-align:right">16.60</td>
+<td style="text-align:right">19.87</td>
+</tr>
+<tr>
+<td>Scidocs*</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">16.96</td>
+<td style="text-align:right">16.88</td>
+<td style="text-align:right">19.94</td>
+</tr>
+<tr>
+<td>Scifact*</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">55.07</td>
+<td style="text-align:right">53.38</td>
+<td style="text-align:right">55.09</td>
+</tr>
+<tr>
+<td>Scifact*</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">43.97</td>
+<td style="text-align:right">52.91</td>
+<td style="text-align:right">46.60</td>
+</tr>
+<tr>
+<td>Scifact*</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">35.27</td>
+<td style="text-align:right">36.27</td>
+<td style="text-align:right">35.70</td>
+</tr>
+<tr>
+<td>Scifact*</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">22.33</td>
+<td style="text-align:right">27.59</td>
+<td style="text-align:right">22.32</td>
+</tr>
+<tr>
+<td>BioASQ*</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">53.09</td>
+<td style="text-align:right">55.95</td>
+<td style="text-align:right">53.14</td>
+</tr>
+<tr>
+<td>BioASQ*</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">61.92</td>
+<td style="text-align:right">70.74</td>
+<td style="text-align:right">61.84</td>
+</tr>
+<tr>
+<td>BioASQ*</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">61.86</td>
+<td style="text-align:right">61.87</td>
+<td style="text-align:right">62.49</td>
+</tr>
+<tr>
+<td>BioASQ*</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">54.37</td>
+<td style="text-align:right">56.82</td>
+<td style="text-align:right">55.44</td>
+</tr>
+<tr>
+<td>NFCorpus*</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">11.41</td>
+<td style="text-align:right">12.49</td>
+<td style="text-align:right">11.42</td>
+</tr>
+<tr>
+<td>NFCorpus*</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">19.00</td>
+<td style="text-align:right">19.10</td>
+<td style="text-align:right">20.24</td>
+</tr>
+<tr>
+<td>NFCorpus*</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">21.36</td>
+<td style="text-align:right">21.07</td>
+<td style="text-align:right">22.12</td>
+</tr>
+<tr>
+<td>NFCorpus*</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">22.95</td>
+<td style="text-align:right">23.48</td>
+<td style="text-align:right">24.09</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">66.00</td>
+<td style="text-align:right">66.00</td>
+<td style="text-align:right">66.67</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">92.06</td>
+<td style="text-align:right">91.83</td>
+<td style="text-align:right">92.33</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">90.59</td>
+<td style="text-align:right">87.37</td>
+<td style="text-align:right">84.79</td>
+</tr>
+<tr>
+<td>HotpotQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">61.34</td>
+<td style="text-align:right">52.22</td>
+<td style="text-align:right">51.30</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">99.00</td>
+<td style="text-align:right">97.00</td>
+<td style="text-align:right">98.00</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">95.35</td>
+<td style="text-align:right">94.92</td>
+<td style="text-align:right">94.73</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">93.58</td>
+<td style="text-align:right">92.23</td>
+<td style="text-align:right">93.18</td>
+</tr>
+<tr>
+<td>MSMARCO</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">85.75</td>
+<td style="text-align:right">84.34</td>
+<td style="text-align:right">77.57</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">83.03</td>
+<td style="text-align:right">79.70</td>
+<td style="text-align:right">79.34</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">78.67</td>
+<td style="text-align:right">74.63</td>
+<td style="text-align:right">76.09</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">68.11</td>
+<td style="text-align:right">64.44</td>
+<td style="text-align:right">65.94</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">44.66</td>
+<td style="text-align:right">40.37</td>
+<td style="text-align:right">39.35</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">96.50</td>
+<td style="text-align:right">93.53</td>
+<td style="text-align:right">95.96</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">95.21</td>
+<td style="text-align:right">92.20</td>
+<td style="text-align:right">95.14</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">90.99</td>
+<td style="text-align:right">89.27</td>
+<td style="text-align:right">90.77</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">68.86</td>
+<td style="text-align:right">69.59</td>
+<td style="text-align:right">62.41</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>译者注：Scidocs* 的断点方法 F1@5 在本表为 <strong>16.60</strong>，而正文表 1 为 <strong>17.60</strong>。两处均按原文保留，未经作者确认不能判定哪个值正确。</p>
+</blockquote>
+<p><strong>表 21：证据检索在所有 k 值下的 F1（%），嵌入模型为 dunzhang/stella_en_1.5B_v5。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">k</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">42.43</td>
+<td style="text-align:right">35.25</td>
+<td style="text-align:right">40.83</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">48.67</td>
+<td style="text-align:right">48.49</td>
+<td style="text-align:right">48.73</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">47.11</td>
+<td style="text-align:right">47.08</td>
+<td style="text-align:right">46.87</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">33.18</td>
+<td style="text-align:right">36.53</td>
+<td style="text-align:right">33.92</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">39.40</td>
+<td style="text-align:right">28.12</td>
+<td style="text-align:right">34.60</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">44.18</td>
+<td style="text-align:right">45.43</td>
+<td style="text-align:right">44.05</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">43.05</td>
+<td style="text-align:right">43.24</td>
+<td style="text-align:right">43.36</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">37.29</td>
+<td style="text-align:right">36.16</td>
+<td style="text-align:right">36.32</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">39.38</td>
+<td style="text-align:right">29.27</td>
+<td style="text-align:right">31.68</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">28.98</td>
+<td style="text-align:right">28.49</td>
+<td style="text-align:right">27.96</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">28.98</td>
+<td style="text-align:right">28.49</td>
+<td style="text-align:right">27.96</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">16.92</td>
+<td style="text-align:right">16.76</td>
+<td style="text-align:right">14.51</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">23.14</td>
+<td style="text-align:right">23.61</td>
+<td style="text-align:right">22.15</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">19.81</td>
+<td style="text-align:right">22.01</td>
+<td style="text-align:right">17.32</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">18.23</td>
+<td style="text-align:right">19.83</td>
+<td style="text-align:right">19.14</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">14.56</td>
+<td style="text-align:right">15.41</td>
+<td style="text-align:right">15.25</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">8.22</td>
+<td style="text-align:right">8.58</td>
+<td style="text-align:right">8.36</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">9.67</td>
+<td style="text-align:right">8.83</td>
+<td style="text-align:right">8.75</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">8.66</td>
+<td style="text-align:right">8.16</td>
+<td style="text-align:right">8.50</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">6.99</td>
+<td style="text-align:right">6.78</td>
+<td style="text-align:right">6.52</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>译者注：原表 TechQA 在 k＝3 与 k＝5 下的三项数值完全相同，此处照录，不据此判断是巧合还是排版问题。</p>
+</blockquote>
+<p><strong>表 22：证据检索在所有 k 值下的 F1（%），嵌入模型为 BAAI/bge-large-en-v1.5。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">k</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">40.34</td>
+<td style="text-align:right">33.39</td>
+<td style="text-align:right">38.31</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">44.60</td>
+<td style="text-align:right">43.71</td>
+<td style="text-align:right">44.36</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">42.25</td>
+<td style="text-align:right">41.46</td>
+<td style="text-align:right">43.03</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">29.54</td>
+<td style="text-align:right">31.89</td>
+<td style="text-align:right">29.28</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">33.88</td>
+<td style="text-align:right">27.02</td>
+<td style="text-align:right">32.73</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">42.10</td>
+<td style="text-align:right">43.58</td>
+<td style="text-align:right">40.79</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">40.85</td>
+<td style="text-align:right">40.89</td>
+<td style="text-align:right">41.22</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">37.29</td>
+<td style="text-align:right">36.16</td>
+<td style="text-align:right">35.99</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">34.90</td>
+<td style="text-align:right">28.25</td>
+<td style="text-align:right">29.57</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">23.09</td>
+<td style="text-align:right">23.92</td>
+<td style="text-align:right">22.24</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">19.82</td>
+<td style="text-align:right">20.90</td>
+<td style="text-align:right">19.27</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">13.00</td>
+<td style="text-align:right">13.25</td>
+<td style="text-align:right">12.92</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">20.09</td>
+<td style="text-align:right">20.09</td>
+<td style="text-align:right">19.40</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">18.24</td>
+<td style="text-align:right">16.93</td>
+<td style="text-align:right">14.27</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">14.83</td>
+<td style="text-align:right">13.89</td>
+<td style="text-align:right">10.73</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">10.72</td>
+<td style="text-align:right">9.24</td>
+<td style="text-align:right">6.39</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">7.80</td>
+<td style="text-align:right">6.20</td>
+<td style="text-align:right">5.34</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">6.88</td>
+<td style="text-align:right">6.83</td>
+<td style="text-align:right">6.76</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">6.59</td>
+<td style="text-align:right">6.43</td>
+<td style="text-align:right">5.70</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">4.99</td>
+<td style="text-align:right">4.71</td>
+<td style="text-align:right">4.34</td>
+</tr>
+</tbody>
+</table>
+<p><strong>表 23：证据检索在所有 k 值下的 F1（%），嵌入模型为 all-mpnet-base-v2。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">k</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">40.96</td>
+<td style="text-align:right">32.75</td>
+<td style="text-align:right">38.83</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">42.76</td>
+<td style="text-align:right">43.39</td>
+<td style="text-align:right">43.38</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">41.78</td>
+<td style="text-align:right">41.56</td>
+<td style="text-align:right">42.07</td>
+</tr>
+<tr>
+<td>ExpertQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">31.82</td>
+<td style="text-align:right">29.64</td>
+<td style="text-align:right">31.37</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">38.02</td>
+<td style="text-align:right">32.22</td>
+<td style="text-align:right">31.67</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">39.78</td>
+<td style="text-align:right">42.22</td>
+<td style="text-align:right">39.68</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">41.31</td>
+<td style="text-align:right">35.34</td>
+<td style="text-align:right">41.04</td>
+</tr>
+<tr>
+<td>DelucionQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">35.94</td>
+<td style="text-align:right">27.77</td>
+<td style="text-align:right">36.11</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">31.04</td>
+<td style="text-align:right">23.30</td>
+<td style="text-align:right">27.24</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">24.62</td>
+<td style="text-align:right">23.41</td>
+<td style="text-align:right">24.60</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">19.42</td>
+<td style="text-align:right">21.24</td>
+<td style="text-align:right">19.56</td>
+</tr>
+<tr>
+<td>TechQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">16.56</td>
+<td style="text-align:right">14.07</td>
+<td style="text-align:right">12.21</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">18.01</td>
+<td style="text-align:right">20.87</td>
+<td style="text-align:right">17.73</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">14.73</td>
+<td style="text-align:right">18.65</td>
+<td style="text-align:right">14.24</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">11.67</td>
+<td style="text-align:right">16.09</td>
+<td style="text-align:right">11.05</td>
+</tr>
+<tr>
+<td>ConditionalQA</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">7.25</td>
+<td style="text-align:right">12.95</td>
+<td style="text-align:right">7.11</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">8.09</td>
+<td style="text-align:right">6.92</td>
+<td style="text-align:right">6.98</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">6.97</td>
+<td style="text-align:right">6.23</td>
+<td style="text-align:right">6.67</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">6.56</td>
+<td style="text-align:right">5.98</td>
+<td style="text-align:right">6.24</td>
+</tr>
+<tr>
+<td>Qasper</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">4.23</td>
+<td style="text-align:right">4.12</td>
+<td style="text-align:right">3.62</td>
+</tr>
+</tbody>
+</table>
+<h3>附录图 2–5：超参数与性能</h3>
+<blockquote>
+<p>图内通用译名：Document Retrieval Performance＝文档检索性能；Evidence Retrieval Performance＝证据检索性能；Recall＝召回率；Precision＝精确率；F1 Score＝F1 分数；lambda＝位置距离权重 λ；amount＝阈值参数值。下列每幅图的两张面板分别对应原图左、右两列，数值和曲线保持原样。</p>
+</blockquote>
+<h4>图 2：单链接聚类</h4>
+<table>
+<thead>
+<tr>
+<th>文档检索（原图左列）</th>
+<th>证据检索（原图右列）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img src="assets/figure2-1.png" alt="图2文档检索" /></td>
+<td><img src="assets/figure2-2.png" alt="图2证据检索" /></td>
+</tr>
+</tbody>
+</table>
+<p><strong>图 2 图注译文</strong>：基于聚类的语义切分器（单链接）在不同超参数取值下的性能。左：文档检索；右：证据检索。横轴表示 <code>n_clusters</code>，纵轴表示指标值。每个子图的纵轴标签标明固定超参数值，λ 从上到下增大。</p>
+<p>图内标题：基于聚类的语义切分器（单链接）。<code>n_clusters</code>＝簇数，取值为 2–10；λ 从上到下为 0、0.25、0.5、0.75、1。</p>
+<h4>图 3：DBSCAN 聚类</h4>
+<table>
+<thead>
+<tr>
+<th>文档检索（原图左列）</th>
+<th>证据检索（原图右列）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img src="assets/figure3-1.png" alt="图3文档检索" /></td>
+<td><img src="assets/figure3-2.png" alt="图3证据检索" /></td>
+</tr>
+</tbody>
+</table>
+<p><strong>图 3 图注译文</strong>：基于聚类的语义切分器（DBSCAN）在不同超参数取值下的性能。左：文档检索；右：证据检索。横轴表示 <code>eps</code>，纵轴表示指标值。每个子图的纵轴标签标明固定超参数值，λ 从上到下增大。</p>
+<p>图内标题：基于聚类的语义切分器（DBSCAN）。<code>eps</code>＝邻域距离阈值，横轴取值为 0.1、0.2、0.3、0.4、0.5；λ 从上到下为 0、0.25、0.5、0.75、1。</p>
+<h4>图 4：基于断点的语义切分</h4>
+<table>
+<thead>
+<tr>
+<th>文档检索（原图左列）</th>
+<th>证据检索（原图右列）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img src="assets/figure4-1.png" alt="图4文档检索" /></td>
+<td><img src="assets/figure4-2.png" alt="图4证据检索" /></td>
+</tr>
+</tbody>
+</table>
+<p><strong>图 4 图注译文</strong>：基于断点的语义切分器在不同超参数取值下的性能。左：文档检索；右：证据检索。横轴表示 <code>n_clusters</code>，纵轴表示指标值。每个子图的纵轴标签表示断点阈值类型。</p>
+<blockquote>
+<p>译者注：原图注写作 <code>n_clusters</code>，但图中实际横轴标为 <code>amount</code>，即阈值参数值。此处保留原图注，并指出其与图像不一致。</p>
+</blockquote>
+<p>图内标题：基于断点的语义切分器。六行阈值类型依次为：<code>percentile</code>＝百分位数；<code>standard_deviation</code>＝标准差；<code>interquartile</code>＝四分位距；<code>gradient</code>＝梯度百分位数；<code>distance_abs</code>＝绝对距离；<code>gradient_abs</code>＝绝对梯度。对应横轴参数范围见附录 B。</p>
+<h4>图 5：固定大小切分</h4>
+<table>
+<thead>
+<tr>
+<th>文档检索（原图左列）</th>
+<th>证据检索（原图右列）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img src="assets/figure5-1.png" alt="图5文档检索" /></td>
+<td><img src="assets/figure5-2.png" alt="图5证据检索" /></td>
+</tr>
+</tbody>
+</table>
+<p><strong>图 5 图注译文</strong>：固定大小切分器在不同超参数取值下的性能。左：文档检索；右：证据检索。横轴表示 <code>n_chunks</code>，纵轴表示指标值。每个子图的纵轴标签标明固定超参数值，<code>n_sents_overlap</code> 从上到下增大。</p>
+<p>图内标题：固定大小切分器。<code>n_chunks</code>＝文本块数量，取值为 2–10；<code>n_sents_overlap</code>＝重叠句子数，上行为 0，下行为 1。</p>
+<h3>图 6：拼接文档切分示例</h3>
+<p><img src="assets/figure6-1.png" alt="图6原始拼接文档与固定大小切分" /></p>
+<p><img src="assets/figure6-2.png" alt="图6聚类和断点切分" /></p>
+<p><strong>图 6 图注译文</strong>：使用不同切分器对拼接文档进行切分的示例。每行显示一个句子及其在文档中的原始索引。红色加粗行表示句子被错误分配到文本块的情况。切分器名称旁的配置，是使错误最少的最佳配置。</p>
+<h4>图 6 原始示例全文译文</h4>
+<blockquote>
+<p>原图本身将较长句子的后半部分写为“...”；下表保留这一截断。原图中的 Document＝文档，Stitched Document＝拼接文档，Chunk＝文本块。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>文档</th>
+<th style="text-align:right">句子索引</th>
+<th>图中可见文字的中文译文</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文档 1</td>
+<td style="text-align:right">1</td>
+<td>汤姆·米克（Tom Muecke）</td>
+</tr>
+<tr>
+<td>文档 1</td>
+<td style="text-align:right">2</td>
+<td>小托马斯·沃伦·米克（Thomas Warren Muecke, Jr.，读音同 Mickey）（1963 年 8 月 20 日—……</td>
+</tr>
+<tr>
+<td>文档 1</td>
+<td style="text-align:right">3</td>
+<td>他曾在贝勒大学参加大学橄榄球比赛，并曾就读于安格尔顿……</td>
+</tr>
+<tr>
+<td>文档 1</td>
+<td style="text-align:right">4</td>
+<td>他也曾是休斯敦油人队和卡尔加里牛仔队的成员。</td>
+</tr>
+<tr>
+<td>文档 2</td>
+<td style="text-align:right">5</td>
+<td>乔纳森·洛索斯（Jonathan Losos）</td>
+</tr>
+<tr>
+<td>文档 2</td>
+<td style="text-align:right">6</td>
+<td>乔纳森·B. 洛索斯是一位美国生物学家，主要研究个体生物学及……</td>
+</tr>
+<tr>
+<td>文档 2</td>
+<td style="text-align:right">7</td>
+<td>他被引用最多的论文的引用次数为 819、800、729 和 665，并且尤其……</td>
+</tr>
+<tr>
+<td>文档 3</td>
+<td style="text-align:right">8</td>
+<td>波士顿食豆人队的 1883 赛季</td>
+</tr>
+<tr>
+<td>文档 3</td>
+<td style="text-align:right">9</td>
+<td>波士顿食豆人队的 1883 赛季是该队的第十三个……</td>
+</tr>
+<tr>
+<td>文档 3</td>
+<td style="text-align:right">10</td>
+<td>食豆人队赢得了队史第三个国家联盟冠军，也是其在……中的第三个……</td>
+</tr>
+<tr>
+<td>文档 3</td>
+<td style="text-align:right">11</td>
+<td>这一年也普遍被认为是该队的……</td>
+</tr>
+<tr>
+<td>文档 4</td>
+<td style="text-align:right">12</td>
+<td>名称绑定</td>
+</tr>
+<tr>
+<td>文档 4</td>
+<td style="text-align:right">13</td>
+<td>在编程语言中，名称绑定是实体之间的关联……</td>
+</tr>
+<tr>
+<td>文档 4</td>
+<td style="text-align:right">14</td>
+<td>绑定到某个对象的标识符，被称为引用该对象。</td>
+</tr>
+<tr>
+<td>文档 4</td>
+<td style="text-align:right">15</td>
+<td>机器语言没有内建的标识符概念，但名称……</td>
+</tr>
+<tr>
+<td>文档 4</td>
+<td style="text-align:right">16</td>
+<td>绑定与作用域密切相关，因为作用域决定……</td>
+</tr>
+</tbody>
+</table>
+<h4>图 6 各切分器输出的完整对应关系</h4>
+<p>以下每个索引对应上表已翻译的同一句话；按索引顺序连接，即得到原图该文本块的全部可见文字。<strong>加粗索引</strong>对应原图红色加粗错误行。</p>
+<table>
+<thead>
+<tr>
+<th>切分器与配置</th>
+<th>块 1</th>
+<th>块 2</th>
+<th>块 3</th>
+<th>块 4</th>
+<th>块 5</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>固定大小；<code>n_sents_per_chunk=4</code>（每块 4 句）</td>
+<td>1、2、3、4</td>
+<td>5、6、7、<strong>8</strong></td>
+<td>9、10、11、<strong>12</strong></td>
+<td>13、14、15、16</td>
+<td>无</td>
+</tr>
+<tr>
+<td>聚类；单链接，<code>lambda=0.5, n_chunks=4</code></td>
+<td>1、2、3、4</td>
+<td>5、6、7、<strong>16</strong></td>
+<td>8、9、10、11</td>
+<td>12、13、14、15</td>
+<td>无</td>
+</tr>
+<tr>
+<td>断点；<code>breakpoint_threshold_type=&quot;percentile&quot;, amount=70</code>（第 70 百分位数）</td>
+<td>1、2、3</td>
+<td><strong>4</strong>、5、6、7</td>
+<td>8、9、10、11</td>
+<td><strong>12</strong></td>
+<td>13、14、15、16</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>译者注：原图将断点切分器写作“Cleavage-based Chunker”，正文写作“Breakpoint-based Chunker”。此处统一译为“断点切分器”，保留原图以供核对。</p>
+</blockquote>
+<h3>图 7：普通文档切分示例</h3>
+<p><img src="assets/figure7-1.png" alt="图7原始普通文档与固定大小切分" /></p>
+<p><img src="assets/figure7-2.png" alt="图7聚类和断点切分" /></p>
+<p><strong>图 7 图注译文</strong>：使用不同切分器对普通文档进行切分的示例。每行显示一个句子及其在文档中的原始索引。红色加粗行表示句子被错误分配到文本块的情况。切分器名称旁的配置，是使错误最少的最佳配置。</p>
+<h4>图 7 原始示例全文译文</h4>
+<p>图内标签：Original Document＝原始文档；Section 1: Overview＝第 1 节：概述；Section 2: Company Details＝第 2 节：公司详情；Section 3: Sales＝第 3 节：销售；Section 4: Use Cases＝第 4 节：使用场景。</p>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th style="text-align:right">句子索引</th>
+<th>图中可见文字的中文译文</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>第 1 节：概述</td>
+<td style="text-align:right">1</td>
+<td>Interact 家用计算机</td>
+</tr>
+<tr>
+<td>第 1 节：概述</td>
+<td style="text-align:right">2</td>
+<td>Interact 家用计算机是一款罕见的、非常早期（1978 年）的美国……</td>
+</tr>
+<tr>
+<td>第 1 节：概述</td>
+<td style="text-align:right">3</td>
+<td>它以“interact Model One 家用计算机”的名称销售。</td>
+</tr>
+<tr>
+<td>第 1 节：概述</td>
+<td style="text-align:right">4</td>
+<td>最初的 Interact Model One 计算机由 Rick Barnich 设计……</td>
+</tr>
+<tr>
+<td>第 2 节：公司详情</td>
+<td style="text-align:right">5</td>
+<td>Interact Electronics Inc 是一家获得……资助的私营公司……</td>
+</tr>
+<tr>
+<td>第 2 节：公司详情</td>
+<td style="text-align:right">6</td>
+<td>Interact Electronics Inc 的总裁兼创始人是 Ken Lochner，他……</td>
+</tr>
+<tr>
+<td>第 2 节：公司详情</td>
+<td style="text-align:right">7</td>
+<td>Ken 在一次成功的创业之后创办了 Interact Electronics Inc……</td>
+</tr>
+<tr>
+<td>第 3 节：销售</td>
+<td style="text-align:right">8</td>
+<td>公司破产前，只售出了几千台 Interact 计算机。</td>
+</tr>
+<tr>
+<td>第 3 节：销售</td>
+<td style="text-align:right">9</td>
+<td>其中大多数由位于巴灵顿的清算商“Protecto Enterprises”售出，……</td>
+</tr>
+<tr>
+<td>第 3 节：销售</td>
+<td style="text-align:right">10</td>
+<td>Interact Model One 家用计算机在 Consumer……首次亮相。</td>
+</tr>
+<tr>
+<td>第 3 节：销售</td>
+<td style="text-align:right">11</td>
+<td>大部分销售通过邮购商完成，你可以购买它……</td>
+</tr>
+<tr>
+<td>第 4 节：使用场景</td>
+<td style="text-align:right">12</td>
+<td>可能是 Interface 上最成功的应用程序……</td>
+</tr>
+<tr>
+<td>第 4 节：使用场景</td>
+<td style="text-align:right">13</td>
+<td>使用它，商店可以输入任何希望显示的消息……</td>
+</tr>
+<tr>
+<td>第 4 节：使用场景</td>
+<td style="text-align:right">14</td>
+<td>尽管它当时主要是一台游戏机，可以玩诸如……的游戏……</td>
+</tr>
+<tr>
+<td>第 4 节：使用场景</td>
+<td style="text-align:right">15</td>
+<td>用户开始连接 Interact，用它控制从灯光……到各种事物。</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>译者注：第 12 句原图拼作“Interface”，其余多处为“Interact”，这里不擅自统一。第 10 句在“Consumer”处已由原图截断，故没有自行补全展会名称。</p>
+</blockquote>
+<h4>图 7 各切分器输出的完整对应关系</h4>
+<p>以下索引对应上表译文，<strong>加粗索引</strong>对应原图红色加粗错误行。</p>
+<table>
+<thead>
+<tr>
+<th>切分器与配置</th>
+<th>块 1</th>
+<th>块 2</th>
+<th>块 3</th>
+<th>块 4</th>
+<th>块 5</th>
+<th>块 6</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>固定大小；<code>n_sents_per_chunk=4</code>（每块 4 句）</td>
+<td>1、2、3、4</td>
+<td>5、6、7、<strong>8</strong></td>
+<td>9、10、11、<strong>12</strong></td>
+<td>13、14、15</td>
+<td>无</td>
+<td>无</td>
+</tr>
+<tr>
+<td>聚类；单链接，<code>lambda=0.5, n_chunks=4</code></td>
+<td>1、2、3、4</td>
+<td>5、6、7、<strong>8</strong>、<strong>9</strong></td>
+<td>10、11</td>
+<td>12、13、14、15</td>
+<td>无</td>
+<td>无</td>
+</tr>
+<tr>
+<td>断点；<code>breakpoint_threshold_type=&quot;percentile&quot;, amount=70</code>（第 70 百分位数）</td>
+<td>1、2、3、4、<strong>5</strong></td>
+<td>6、7</td>
+<td><strong>8</strong></td>
+<td>9、10、11</td>
+<td><strong>12</strong></td>
+<td>13、14、15</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>译者附记：原文中需要注意的对应关系</h2>
+<p>本节为译者添加，不属于论文原文。</p>
+<ol>
+<li><strong>表 1 与表 20 的 Scidocs* 数值冲突</strong>：断点方法 F1@5 分别为 17.60 与 16.60；均照录。</li>
+<li><strong>表 9 的 k 标注冲突</strong>：表题写 F1@2，实验设置列的是 1、3、5、10；未擅自改为 F1@3。</li>
+<li><strong>图 4 横轴说明冲突</strong>：图注写 <code>n_clusters</code>，图内实际为阈值 <code>amount</code>。</li>
+<li><strong>附录 B 与 E.3 的交叉引用</strong>：正文若干处把分析指向附录 B；B 实际主要给出参数范围，性能分析在 E.3。</li>
+<li><strong>固定大小的含义</strong>：第 2 节按每块句子数描述，附录 B 扫描每篇文档的目标块数 2–10。它不是统一的 256 字符或 256 token 基线。</li>
+<li><strong>图示名称差异</strong>：图 6–7 的 Cleavage-based 与正文的 Breakpoint-based 对应；图 7 第 12 句的 Interface 拼法保留。</li>
+</ol>
+<h3>页码覆盖索引</h3>
+<table>
+<thead>
+<tr>
+<th>原 PDF 页</th>
+<th>原出版页码</th>
+<th>本译文对应内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1–4</td>
+<td>2155–2158</td>
+<td>摘要、第 1–5 节、公式 1–3、图 1、表 1–3</td>
+</tr>
+<tr>
+<td>5–6</td>
+<td>2159–2160</td>
+<td>局限性、全部 35 项参考文献</td>
+</tr>
+<tr>
+<td>7</td>
+<td>2161</td>
+<td>附录 A–B</td>
+</tr>
+<tr>
+<td>8–9</td>
+<td>2162–2163</td>
+<td>附录 C–D、表 4–6</td>
+</tr>
+<tr>
+<td>10–11</td>
+<td>2164–2165</td>
+<td>附录 E.1–E.4、表 7</td>
+</tr>
+<tr>
+<td>12–13</td>
+<td>2166–2167</td>
+<td>附录 E.5、表 8–19</td>
+</tr>
+<tr>
+<td>14–15</td>
+<td>2168–2169</td>
+<td>表 20–23</td>
+</tr>
+<tr>
+<td>16–19</td>
+<td>2170–2173</td>
+<td>图 2–5、图注、标签说明</td>
+</tr>
+<tr>
+<td>20–21</td>
+<td>2174–2175</td>
+<td>图 6、图注、全部可见示例文字及切分对应关系</td>
+</tr>
+<tr>
+<td>22–23</td>
+<td>2176–2177</td>
+<td>图 7、图注、全部可见示例文字及切分对应关系</td>
+</tr>
+</tbody>
+</table>
+</main></body></html>

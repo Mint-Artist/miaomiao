@@ -1,0 +1,383 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>《语义切分值得其计算成本吗(NAACL 2025 Findings)》解读报告</title><style>
+:root{color-scheme:light;--ink:#182b3b;--muted:#526879;--line:#d8e2e8;--accent:#196e86}
+*{box-sizing:border-box}body{margin:0;background:#f2f5f7;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.85;font-size:17px}main{max-width:1080px;margin:32px auto;background:white;padding:52px 66px;box-shadow:0 4px 26px #1225360b;border-radius:12px}h1{font-size:2em;line-height:1.35;margin:0 0 28px}h2{border-top:1px solid var(--line);padding-top:28px;margin-top:48px;font-size:1.5em}h3{font-size:1.2em;margin-top:32px}p{margin:16px 0}a{color:var(--accent);text-underline-offset:3px}blockquote{margin:22px 0;padding:2px 22px;border-left:4px solid #8bb6c4;background:#f4f8fa;color:var(--muted);font-size:.93em}code{background:#f0f4f6;padding:2px 5px;border-radius:4px;font-size:.88em;overflow-wrap:anywhere}pre{background:#f0f4f6;padding:14px 18px;border-radius:8px;overflow-x:auto;font-size:.85em}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%;font-size:.82em;margin:22px 0}th,td{padding:7px 9px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}th{background:#eaf2f5;font-weight:600}tbody tr:nth-child(even){background:#f8fafb}img{display:block;max-width:100%;height:auto;margin:24px auto}u{text-decoration:underline;text-decoration-color:#b3563d;text-underline-offset:2px}.equation,.katx{font-family:Georgia,serif;text-align:center;font-size:1.1em;padding:16px;overflow-x:auto;background:#f8fafb}li{margin:6px 0}hr{border:0;border-top:1px solid var(--line);margin:36px 0}
+@media(max-width:720px){body{font-size:16px}main{margin:0;border-radius:0;padding:28px 18px}th,td{padding:6px 4px;font-size:.9em}h1{font-size:1.65em}}
+@media print{body{background:white;font-size:11pt}main{max-width:none;margin:0;padding:0;box-shadow:none}a{color:inherit;text-decoration:none}h2,h3{break-after:avoid}tr,img,blockquote{break-inside:avoid}table{font-size:8pt}}
+</style></head><body><main><p><a href="全文中文翻译.html">← 全文中文翻译</a></p><nav><b>目录</b><ul><li style="margin-left:0px"><a href="#1-对你们最重要的结论">1. 对你们最重要的结论</a></li><li style="margin-left:0px"><a href="#2-这篇论文实际比较了什么">2. 这篇论文实际比较了什么</a></li><li style="margin-left:14px"><a href="#2-1-三类切分器">2.1 三类切分器</a></li><li style="margin-left:14px"><a href="#2-2-实验条件">2.2 实验条件</a></li><li style="margin-left:0px"><a href="#3-结果究竟有多强">3. 结果究竟有多强</a></li><li style="margin-left:14px"><a href="#3-1-文档检索-收益高度依赖文档来源">3.1 文档检索：收益高度依赖文档来源</a></li><li style="margin-left:14px"><a href="#3-2-证据检索-三类方法差异较小">3.2 证据检索：三类方法差异较小</a></li><li style="margin-left:14px"><a href="#3-3-答案生成-现有指标下差异很小-但证明力度有限">3.3 答案生成：现有指标下差异很小，但证明力度有限</a></li><li style="margin-left:14px"><a href="#3-4-计算成本不值得-应如何理解">3.4 “计算成本不值得”应如何理解</a></li><li style="margin-left:0px"><a href="#4-与网页结构最相关的两幅图">4. 与网页结构最相关的两幅图</a></li><li style="margin-left:14px"><a href="#4-1-图-6-标题成为前一个块的尾巴">4.1 图 6：标题成为前一个块的尾巴</a></li><li style="margin-left:14px"><a href="#4-2-图-7-同一实体不等于同一章节">4.2 图 7：同一实体不等于同一章节</a></li><li style="margin-left:0px"><a href="#5-值得借鉴的评估设计-以及必须纠正的地方">5. 值得借鉴的评估设计，以及必须纠正的地方</a></li><li style="margin-left:14px"><a href="#5-1-保留文档-证据-答案三层评估">5.1 保留文档、证据、答案三层评估</a></li><li style="margin-left:14px"><a href="#5-2-不要照搬-Recall-NDCG-不适用-的说法">5.2 不要照搬“Recall/NDCG 不适用”的说法</a></li><li style="margin-left:14px"><a href="#5-3-固定-top-k-不等于公平控制预算">5.3 固定 top-k 不等于公平控制预算</a></li><li style="margin-left:14px"><a href="#5-4-把选参和报告成绩分开">5.4 把选参和报告成绩分开</a></li><li style="margin-left:14px"><a href="#5-5-标注应独立于切分方法">5.5 标注应独立于切分方法</a></li><li style="margin-left:0px"><a href="#6-针对当前业务的最小实验设计">6. 针对当前业务的最小实验设计</a></li><li style="margin-left:14px"><a href="#6-1-四个首轮对照">6.1 四个首轮对照</a></li><li style="margin-left:14px"><a href="#6-2-怎样让-EC-输入比较可解释">6.2 怎样让 EC 输入比较可解释</a></li><li style="margin-left:14px"><a href="#6-3-数据从哪里来">6.3 数据从哪里来</a></li><li style="margin-left:14px"><a href="#6-4-指标与判定">6.4 指标与判定</a></li><li style="margin-left:0px"><a href="#7-论文中值得保留记录的瑕疵">7. 论文中值得保留记录的瑕疵</a></li><li style="margin-left:0px"><a href="#8-对之前实验方案的确认">8. 对之前实验方案的确认</a></li><li style="margin-left:0px"><a href="#阅读与文件对应">阅读与文件对应</a></li></ul></nav><h1>《语义切分值得其计算成本吗？》解读报告</h1>
+<p>研究对象：Renyi Qu、Ruixuan Tu、Forrest Bao，<em>Is Semantic Chunking Worth the Computational Cost?</em>，Findings of NAACL 2025，2155–2177 页。<a href="https://aclanthology.org/2025.findings-naacl.114/">论文与出版信息</a> · <a href="https://doi.org/10.18653/v1/2025.findings-naacl.114">DOI</a></p>
+<p>报告日期：2026-09-20。本文依据原始 PDF 全文及附录撰写。下文明确区分“作者观察”“证据边界”和“面向你们的工程建议”；不把本报告的建议冒充为论文结论。</p>
+<h2>1. 对你们最重要的结论</h2>
+<p><strong>这篇论文支持保留强大的简单切分基线、用下游任务验证复杂方法；它不证明你们当前的“256 字符 + 贪心装箱”已经最优，也不证明网页结构没有价值。</strong></p>
+<p>论文的可靠启示是：按相邻句子嵌入距离找断点，或按句子语义聚类，并不自动带来更好的检索和回答。真正决定方案价值的是，在你们的数据分布、模型和成本预算下，是否改善页面检索、证据支持和最终答案。</p>
+<p>与你们最相关的内容在附录 E.4：作者指出，固定大小切分把相邻章节混在一起的问题，可以通过<strong>先按章节分段，再做固定大小切分</strong>来修复。但这只是样例分析，没有对应的大规模 HTML 结构切分对照实验。它支持把结构保留与结构约束切分列为优先验证的候选，不能作为已证明结构方案获胜的依据。<a href="https://aclanthology.org/2025.findings-naacl.114.pdf">原文 §2、§4、附录 E.4</a></p>
+<p>你们现在应继续推进两件事：<strong>让 EC 保留可靠的正文结构信号；用真实查询和原文证据做受控实验。</strong> 不必因这篇论文推翻已有实验主线。</p>
+<h2>2. 这篇论文实际比较了什么</h2>
+<h3>2.1 三类切分器</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>实际操作</th>
+<th>主要代价或局限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>固定大小</td>
+<td>先分句，再顺序分组；附录扫描每篇文档 2–10 个块，相邻块重叠 0 或 1 句</td>
+<td>可能跨章节，但保持原文连续性</td>
+</tr>
+<tr>
+<td>断点语义</td>
+<td>给句子做嵌入；相邻句子的距离超过阈值时切开</td>
+<td>局部决策；难以直接控制块长；标题等短句可能孤立</td>
+</tr>
+<tr>
+<td>聚类语义</td>
+<td>将语义距离与位置距离加权，以单链接或 DBSCAN 聚类</td>
+<td>可把不相邻的句子组合在一起；可能破坏上下文与引用关系</td>
+</tr>
+</tbody>
+</table>
+<p>这里的“语义切分”主要指<strong>基于句子嵌入距离的断点与聚类方法</strong>。论文没有系统覆盖 HTML DOM 层级切分、LLM 判断边界、学习式边界模型、命题切分、父子块检索或 late chunking 等完整方法族。因此，不宜把标题中的“semantic chunking”扩大成“一切利用语义或结构的方法”。</p>
+<p><strong>它的固定大小基线与当前业务基线不同。</strong> 作者用句子作为原子单位，并扫描每篇文档的块数；你们的核心约束是 256 字符和贪心装箱。二者在是否截断句子、每篇块数、实际长度分布上都可能不同。即使作者的基线获胜，也不能直接推导你们的基线已经足够好。来源：原文 §2、附录 A–B。</p>
+<h3>2.2 实验条件</h3>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>论文设置</th>
+<th>对外推的影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文档检索</td>
+<td>10 个数据集；每个随机抽 100 个查询；其中 6 个数据集由短文档拼接</td>
+<td>覆盖多个任务，但人工拼接分布和生产网页不同</td>
+</tr>
+<tr>
+<td>证据与生成</td>
+<td>5 个数据集；证据句子标注；不使用拼接文档</td>
+<td>能观察比页面命中更细的差异</td>
+</tr>
+<tr>
+<td>分句</td>
+<td>spaCy <code>en_core_web_sm</code></td>
+<td>并非你们的中文 <code>&lt;br&gt;</code> 输入场景</td>
+</tr>
+<tr>
+<td>嵌入</td>
+<td>Stella、BGE-large-en、all-mpnet-base-v2</td>
+<td>模型变化可改变结论；不是全模型普遍规律</td>
+</tr>
+<tr>
+<td>检索</td>
+<td>top-k 块，k＝1、3、5、10</td>
+<td>相同 k 不保证相同文本量或成本</td>
+</tr>
+<tr>
+<td>生成</td>
+<td><code>gpt-4o-mini</code>；top-5 块输入</td>
+<td>生成结果受模型、提示词、证据组织与预算共同影响</td>
+</tr>
+<tr>
+<td>参数选择</td>
+<td>每个数据集按各 k 的平均 F1 选最佳配置</td>
+<td>文中未清楚交代独立开发集选参、锁定测试集验证的完整流程</td>
+</tr>
+<tr>
+<td>主结果</td>
+<td>主文使用 Stella，文档与证据报告 F1@5</td>
+<td>不能把这套映射后的 F1 当作所有业务的唯一主指标</td>
+</tr>
+</tbody>
+</table>
+<p>来源：原文 §3、§4.1、附录 B–D、表 4–6。需要注意，论文使用多个不同名称的原始数据划分，不等于已经充分说明了本次切分超参数选择的独立验证协议。</p>
+<h2>3. 结果究竟有多强</h2>
+<h3>3.1 文档检索：收益高度依赖文档来源</h3>
+<p>主文表 1 的 F1@5（%）：</p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th style="text-align:right">固定大小</th>
+<th style="text-align:right">断点语义</th>
+<th style="text-align:right">聚类语义</th>
+<th>可以观察到什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Miracl，拼接</td>
+<td style="text-align:right">69.45</td>
+<td style="text-align:right">81.89</td>
+<td style="text-align:right">67.35</td>
+<td>断点比固定高 12.44 个百分点</td>
+</tr>
+<tr>
+<td>NQ，拼接</td>
+<td style="text-align:right">43.79</td>
+<td style="text-align:right">63.93</td>
+<td style="text-align:right">41.01</td>
+<td>断点比固定高 20.14 个百分点</td>
+</tr>
+<tr>
+<td>HotpotQA，未拼接</td>
+<td style="text-align:right">90.59</td>
+<td style="text-align:right">87.37</td>
+<td style="text-align:right">84.79</td>
+<td>固定大小更高</td>
+</tr>
+<tr>
+<td>MSMARCO，未拼接</td>
+<td style="text-align:right">93.58</td>
+<td style="text-align:right">92.23</td>
+<td style="text-align:right">93.18</td>
+<td>固定大小更高</td>
+</tr>
+<tr>
+<td>ConditionalQA，未拼接</td>
+<td style="text-align:right">68.11</td>
+<td style="text-align:right">64.44</td>
+<td style="text-align:right">65.94</td>
+<td>固定大小更高</td>
+</tr>
+<tr>
+<td>Qasper，未拼接</td>
+<td style="text-align:right">90.99</td>
+<td style="text-align:right">89.27</td>
+<td style="text-align:right">90.77</td>
+<td>固定大小更高，但与聚类非常接近</td>
+</tr>
+</tbody>
+</table>
+<p>作者解释：随机拼接的不相关短文档，天然存在明显的主题跳变；断点方法有机会恢复原始短文档边界。因此，这类测试容易显示主题断点方法的价值。较连贯的原始文档可能没有这么强的跳变。</p>
+<p><strong>应接受的结论</strong>：需要按文档类型分层看结果，不能只看混合平均数。</p>
+<p><strong>不应接受的扩大结论</strong>：“真实文档上语义切分永远更差”。以上是该组数据、模型、参数选择及 F1@5 下的结果，既不是所有 k，也不是所有方法的普遍结论。</p>
+<h3>3.2 证据检索：三类方法差异较小</h3>
+<p>主文表 2 中，固定大小在 5 个数据集中的 3 个取得最高值；断点在 ConditionalQA 上为 19.83，固定大小为 18.23，差 1.60 个百分点。其他数据集的方法间差异较小。</p>
+<p>作者观察到，不同切分器虽然产生不同边界，最终检索到的块常常覆盖相同证据。这解释了为什么“分块看起来更合理”没有必然转化为检索收益。来源：§4.3。</p>
+<p><strong>对你们的启示</strong>：检查边界质量有价值，但最终应看关键证据是否进入可用上下文。不能仅凭肉眼觉得某个方案更整齐，就判断它更适合搜索或 RAG。</p>
+<h3>3.3 答案生成：现有指标下差异很小，但证明力度有限</h3>
+<p>主文表 3 的 BERTScore 多数相同，或只差 0.01 左右；附录问答余弦相似度也接近。可以说，<strong>本文使用的这些指标没有显示稳定、明显的生成收益</strong>。</p>
+<p>不能因此断言“最终回答质量完全相同”：</p>
+<ul>
+<li>BERTScore 衡量与参考答案的语义相似程度，不直接等于事实正确、条件完整或引用有据。</li>
+<li>问题与答案的余弦相似度更适合作为粗略语义关联诊断；与问题高度相关的答案仍可能错误。</li>
+<li>保留两位小数会隐藏细微差异；数值接近不等于完成了统计等效性检验。</li>
+<li>作者在局限性中指出，RAGBench 的答案由 LLM 生成，也会限制评价可靠性。</li>
+</ul>
+<p>来源：§4.4、附录 D、E.1、局限性。</p>
+<h3>3.4 “计算成本不值得”应如何理解</h3>
+<p><strong>本文没有给出能直接用于你们容量规划的、系统性的耗时、GPU 小时、成本金额或吞吐对比表，也没有完整的质量—成本前沿。</strong> 标题及结论主要建立在“语义方法需要额外处理，而收益不稳定”的判断上。</p>
+<p>以下是本报告的工程分析，而非作者的成本实测：</p>
+<ul>
+<li>顺序装箱主要需要文本遍历；嵌入式断点切分还需句子编码与距离计算。</li>
+<li>本文聚类方案显式计算句子两两距离矩阵，矩阵规模随句子数平方增长；实际总耗时还取决于编码、实现与聚类算法。</li>
+<li>如果句子向量可复用，或正文结构解析本来就在上游执行，新增边际成本会改变。</li>
+<li>检索索引条数、向量写入量、重排输入量、生成输入量，都可能比离线切分本身更影响总成本。</li>
+</ul>
+<p>因此，你们需要实测“额外成本换来多少业务收益”，不能把标题当作已经替业务完成了成本分析。</p>
+<h2>4. 与网页结构最相关的两幅图</h2>
+<h3>4.1 图 6：标题成为前一个块的尾巴</h3>
+<p>原拼接文档中，句子 8 是第三篇文档的标题，句子 12 是第四篇文档的标题。每四句一块时，它们分别落到前一篇文档所在的块，标题与正文被拆开。断点方法又可能把“名称绑定”单独切成一个没有解释的块。</p>
+<p>对网页来说，这与“标题被塞到上一个段落末尾”“列表引导语和条目分开”等问题相似。<strong>标题与所属内容的关系，不等于相邻两句的向量相似度。</strong> 一个短标题可能与解释句字面相似度不高，但在结构上必须关联。这个判断是从论文例子推导的工程解释。</p>
+<h3>4.2 图 7：同一实体不等于同一章节</h3>
+<p>原文按“概述／公司详情／销售／使用场景”分节。聚类把部分销售句子归到公司详情中；它们讨论同一实体，语义相似，却承担不同的信息功能。断点方法也将相邻、同属公司详情的句子拆开，并产生单句块。</p>
+<p>作者明确说明：章节结构没有提供给切分器，并指出预先按章节分段可以修复固定大小方法的跨节错误。来源：附录 E.4、图 7。</p>
+<p>这为你们提供了一个具体假设：</p>
+<blockquote>
+<p>EC 保留标题层级、段落、列表、表格及其顺序后，结构约束能否以较小的新增成本减少跨主题拼装、标题孤立和条件断裂？</p>
+</blockquote>
+<p>它仍需真实实验。HTML 标签也并非天然正确：<code>div</code> 可能只用于布局，标题可能误用，需要 EC 提供<strong>规范化的正文语义结构</strong>，并测抽取质量。</p>
+<h2>5. 值得借鉴的评估设计，以及必须纠正的地方</h2>
+<h3>5.1 保留文档、证据、答案三层评估</h3>
+<p>这直接对应你们“搜索与 RAG 都使用 chunk”的现实。只测文档命中，会漏掉“命中了正确网页，却取错了段落”的失败；只测答案，难以区分检索、切分和生成各自的问题。</p>
+<h3>5.2 不要照搬“Recall/NDCG 不适用”的说法</h3>
+<p>原文 §4.1 的理由说得过宽。<strong>相关文档数量不固定，本身不会使 Recall 或 NDCG 失效。</strong> 在常见检索评估中，不同 query 的相关项数量本来就可以不同。</p>
+<p>论文选择的是：检索 k 个块 → 映射并去重为文档集合 → 计算集合精确率、召回率和 F1。它主要评估集合命中，弱化排序；并不是证明排序指标不能使用。</p>
+<p>如果五个块都来自同一篇相关文档，论文这套文档精确率可以达到 100%，即使五个块高度重复、没有增加证据。这说明该指标不能独自表达页面多样性、冗余与证据效率。</p>
+<p><strong>你们的处理方式</strong>：搜索链路保留页面级 nDCG、Recall，明确块分数如何聚合到页面及去重；另报告块级冗余、证据支持。不要用论文的 F1 替代整个搜索评估体系。</p>
+<h3>5.3 固定 top-k 不等于公平控制预算</h3>
+<p>同为 top-5，A 方案每块很短，B 方案每块很长，获得的原文量与模型输入量可能显著不同。证据 F1 能权衡相关与无关句子的比例，但<strong>不能替代输入 token 与系统成本控制</strong>。</p>
+<p>你们应同时报告：</p>
+<ol>
+<li><strong>当前链路可替换性</strong>：维持现有召回 K、重排、截断和 256 上限，观察替换策略的实际结果。</li>
+<li><strong>固定最终上下文 token 预算</strong>：统一生成输入预算，并记录候选量、重排量、去重前后文本量，避免把读到更多文本误当作切分更好。</li>
+<li><strong>质量—成本曲线</strong>：允许不同策略在同等调参机会下选择合适粒度；必要时增加平均块长或索引条数近似匹配的边界诊断。</li>
+</ol>
+<p>这三种设置回答不同问题，不应混成一张“完全公平”的单分数排名。</p>
+<h3>5.4 把选参和报告成绩分开</h3>
+<p>论文 §4.1 按每个数据集最佳配置报告结果，但没有充分交代独立选参验证流程。这里不能直接指控数据泄漏，也不能默认其报告就是可泛化的线上收益。</p>
+<p>你们应在开发集选择阈值、长度和标题策略，再在锁定测试集上一次性比较。若不训练模型，不必机械设置训练集；若训练学习式切分器，则单独安排训练数据。近重复 query、网页和模板尽量避免跨分区泄漏。</p>
+<h3>5.5 标注应独立于切分方法</h3>
+<p>论文有证据句子，你们暂时没有。建议先在<strong>规范化原文</strong>上标注证据位置和必要事实，而不是给某一种策略的 chunk ID 打标签。</p>
+<p>同时区分：</p>
+<ul>
+<li>原文证据跨度覆盖：适合自动计算、排查断裂。</li>
+<li>必需事实和条件是否齐全：处理否定、适用型号、版本、先决条件、例外以及跨段组合。</li>
+<li>最终答案是否正确且引用有据：检查检索到的证据是否真正被使用。</li>
+</ul>
+<p>允许标注等价证据方案；不要把某一人工跨度当作唯一合法答案来源。缺少“不”与缺少标点的语义后果完全不同，不能只依赖字符重叠率。</p>
+<h2>6. 针对当前业务的最小实验设计</h2>
+<p>以下为工程建议，不是论文原有实验，也不预设结构方法获胜。</p>
+<h3>6.1 四个首轮对照</h3>
+<table>
+<thead>
+<tr>
+<th>组别</th>
+<th>输入与方法</th>
+<th>要回答的问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A：现网基线</td>
+<td>现有 <code>&lt;br&gt;</code> 字符串，256 字符 + 当前贪心装箱，按真实代码复现</td>
+<td>现状成绩是多少？</td>
+</tr>
+<tr>
+<td>B：句子边界基线</td>
+<td>同一正文和 <code>&lt;br&gt;</code> 输入，加入稳定中文分句后顺序装箱</td>
+<td>改善原子单元是否已经足够？</td>
+</tr>
+<tr>
+<td>C：结构约束</td>
+<td>相同正文，保留标题／段落／列表／表格关系；结构内分句与装箱</td>
+<td>EC 额外结构带来多少增益？</td>
+</tr>
+<tr>
+<td>D：语义断点</td>
+<td>与 B 相同的正文及分句器，加入嵌入距离断点</td>
+<td>额外语义计算是否超过简单基线？</td>
+</tr>
+</tbody>
+</table>
+<p>第一轮先让 B、C、D 共享非研究因素，例如分句器、长度计数、超长句兜底、模型和检索配置；A 则忠实复现现网。B−A 可能含有分句与兜底等共同变化，C−B、D−B 才更适合解释结构与语义的增量。</p>
+<p>如果 256 是业务硬上限，所有方案遵守，并明确结论只对该上限成立。若它可调整，让各方法在开发集上至少测试少量不同粒度，避免仅凭 256 档成绩淘汰其他策略。所有方案报告实际长度分布、每页块数和索引规模；相同最大值并不意味着实际粒度已经相同。</p>
+<p>结构与语义也可以组合，例如先按章节，再在过长章节内判断语义断点；这是后续消融组，不必将两者视为互斥阵营。</p>
+<h3>6.2 怎样让 EC 输入比较可解释</h3>
+<p>最重要的是让两种输入来自<strong>同一份冻结的规范化正文</strong>：</p>
+<ul>
+<li>结构版保留可信的标题层级、段落边界、列表容器与条目、表头与表格单元关系，以及原文顺序。</li>
+<li>展平版从同一份结构正文生成，仅移除结构标签并转换为现有 <code>&lt;br&gt;</code> 形式。</li>
+<li>正文去噪、漏字、内容顺序保持一致；若 EC 同时改正文抽取，则另设实验拆分“内容清洗”与“结构保留”的贡献。</li>
+<li>不直接把所有 <code>div</code> 作为语义单元，也不把一个很长的 <code>section</code> 或表格强制视为不可拆块。</li>
+<li>记录规范化原文偏移和来源映射，方便证据标注、回溯与跨方案对齐。</li>
+</ul>
+<p>输入仍然可以是一个字符串。关键是字符串中保留可解析的结构，例如 <code>h1–h6</code>、<code>p</code>、<code>ul/ol/li</code>、<code>table/tr/th/td</code>，必要时使用明确约定的章节包装。结构标签通常用于边界与元信息，不应无意变成每个方案不一致的模型输入噪声。</p>
+<h3>6.3 数据从哪里来</h3>
+<p>从真实 query 日志抽取代表性样本，覆盖不同站点、模板、文档长度和问题类型；原文证据由模型辅助提议，人工复核。<strong>点击不是可靠的证据真值，模型标注也不能未经校准就作为最终裁判。</strong></p>
+<p>保留两份独立视角：</p>
+<ul>
+<li><strong>真实流量测试集</strong>：按业务分布统计整体收益。</li>
+<li><strong>切分敏感诊断集</strong>：条件＋动作、标题＋正文、完整步骤、列表枚举、表头＋单元格、型号与版本消歧、跨段汇总等。</li>
+</ul>
+<p>诊断集用来定位缺陷，不能取代真实流量集，也不要只挑结构方法容易胜出的页面。查询应尽量独立于候选方法的边界产生；人工拼接文档可做压力测试，不应主导上线决策。</p>
+<p>先用小规模先导集估计标注成本、差异方差与最小有意义收益，再决定正式样本量。论文每数据集 100 个查询只是其设置，不能直接当作你们的样本量标准。</p>
+<h3>6.4 指标与判定</h3>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>建议报告</th>
+<th>必须同时记录</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>搜索</td>
+<td>页面 nDCG、页面 Recall；按实际页面展示任务选择主指标</td>
+<td>块到页面聚合、去重、候选页数量</td>
+</tr>
+<tr>
+<td>RAG 检索</td>
+<td>固定预算下证据召回、必要事实支持、完整条件支持；精确率与冗余作诊断</td>
+<td>总 token、唯一原文覆盖、重叠比例、截断情况</td>
+</tr>
+<tr>
+<td>生成</td>
+<td>答案正确性、完整性、引用支持；模型判分经过人工校准</td>
+<td>相同生成模型与提示词；隐藏方法名；必要时重复采样</td>
+</tr>
+<tr>
+<td>离线成本</td>
+<td>切分耗时、编码耗时、索引条数与体积、更新成本</td>
+<td>吞吐、硬件、缓存、并行度、异常率</td>
+</tr>
+<tr>
+<td>在线成本</td>
+<td>检索／重排／生成耗时及输入量</td>
+<td>平均值及尾延迟、候选数量、实际 token</td>
+</tr>
+</tbody>
+</table>
+<p>对同一批 query 做配对比较，报告置信区间及分层结果；重复 query 或同站点样本高度相关时，重采样需考虑其分组。无法拒绝“无差异”不等于证明两个方法等效。</p>
+<p>最后按<strong>达到业务有意义的质量提升，同时成本可接受</strong>决定是否替换。若总体持平，但表格／步骤／条件类显著改善，可以考虑按页面类型使用结构规则；是否值得分流仍需成本和稳定性验证。</p>
+<h2>7. 论文中值得保留记录的瑕疵</h2>
+<p>这些问题不自动推翻整篇研究，但会限制某些精细比较与复现。</p>
+<table>
+<thead>
+<tr>
+<th>原文位置</th>
+<th>核查发现</th>
+<th>使用时怎样处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>表 1 vs 表 20</td>
+<td>Scidocs 的断点 F1@5 分别为 17.60 和 16.60</td>
+<td>不据此计算精确总体收益；向作者或代码确认</td>
+</tr>
+<tr>
+<td>表 9</td>
+<td>标题为 F1@2，但 §3.1 列出的 k 为 1、3、5、10</td>
+<td>保留原值与原标签，不擅自改成 F1@3</td>
+</tr>
+<tr>
+<td>图 4 图注</td>
+<td>写横轴为 n_clusters，图内实际为 amount</td>
+<td>按图理解为阈值参数，注明冲突</td>
+</tr>
+<tr>
+<td>表 21</td>
+<td>TechQA 的 k＝3 和 k＝5 三项值完全相同</td>
+<td>记录待核查；重复不必然是错误</td>
+</tr>
+<tr>
+<td>正文交叉引用</td>
+<td>部分性能分析指向附录 B，详细趋势主要在 E.3</td>
+<td>阅读时结合两处</td>
+</tr>
+<tr>
+<td>成本与显著性</td>
+<td>没有完整成本实测；嵌入模型差异有显著性报告，不等于所有切分差异都有充分统计支持</td>
+<td>在业务实验里补齐，不能把小差异直接说成已证实优劣</td>
+</tr>
+</tbody>
+</table>
+<p>译文已对相关冲突作单独标注，数值照录原 PDF，没有替作者改表。</p>
+<h2>8. 对之前实验方案的确认</h2>
+<p>结合这篇论文，之前的主线仍然成立：</p>
+<p><strong>真实查询 → 独立的原文证据标注 → 多种切分对照 → 页面、证据、答案分层评估 → 成本与上线验证。</strong></p>
+<p>需要强调的修正是：</p>
+<ol>
+<li>保留页面级排序指标，不因论文采用 F1 就弃用 nDCG/Recall。</li>
+<li>不把固定 top-k 或同为 256 上限当作已完全控制预算。</li>
+<li>参数在开发集选，测试集锁定；按真实模板、长度和问题类型报告。</li>
+<li>证据跨度覆盖之外，补齐必要事实、条件及引用支持判断。</li>
+<li>把 EC 保留结构与结构切分的效果作为待检验假设；不预设必胜，也不因本论文而放弃。</li>
+<li>实测新增成本，尤其是语义编码、索引膨胀、重排与生成输入，而不只看离线切分代码耗时。</li>
+</ol>
+<p><strong>对当前阶段的具体决策：优先完成 EC 结构输入的可对齐样本与 A/B/C/D 四组实验；语义方法保留为候选，暂不因“更先进”而先行替换。</strong></p>
+<hr />
+<h2>阅读与文件对应</h2>
+<ul>
+<li>全文译文：<a href="../全文翻译/全文中文翻译.html">全文中文翻译.md</a></li>
+<li>原始下载 PDF：<a href="../原文/SemanticChunkingCost.pdf">2025.findings-naacl.114.pdf</a></li>
+<li>来源与校验信息：<a href="../原文/source_manifest.json">source_manifest.json</a></li>
+</ul>
+<p>本报告中“论文事实”的依据均为这一篇论文；实验建议是结合你们业务现状作出的分析，并不声称已在你们数据上实测。论文原文采用 CC BY 4.0；译文已单独提供来源与授权说明。</p>
+</main></body></html>

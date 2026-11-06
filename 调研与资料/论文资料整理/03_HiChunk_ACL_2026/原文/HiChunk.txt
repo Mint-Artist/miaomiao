@@ -1,0 +1,1516 @@
+
+
+=== PDF PAGE 1 ===
+
+Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (V olume 1: Long Papers), pages 29738–29753
+July 2-7, 2026 ©2026 Association for Computational Linguistics
+HiChunk: Evaluating and Enhancing Retrieval Augmented Generation
+with Hierarchical Chunking
+Wensheng Lu1†, Keyu Chen1†, Zhifeng Shen1, Ruizhi Qiao1*, Xing Sun1
+1Tencent Youtu Lab
+{vincentwslu,yolochen,billsshen,ruizhiqiao,winfredsun}@tencent.com
+Abstract
+Retrieval-Augmented Generation (RAG) en-
+hances the response capabilities of language
+models by integrating external knowledge
+sources. However, document chunking as an
+important part of RAG system often lacks ef-
+fective evaluation tools. This paper first an-
+alyzes why existing RAG evaluation bench-
+marks are inadequate for assessing document
+chunking quality, specifically due to evidence
+sparsity. Based on this conclusion, we propose
+HiCBench, which includes manually annotated
+multi-level document chunking points, syn-
+thesized evidence-dense question answer(QA)
+pairs, and their corresponding evidence sources.
+We also propose HiChunk, a hierarchical doc-
+ument structuring framework using fine-tuned
+LLMs and the Auto-Merge retrieval algorithm
+to enhance retrieval quality. Experiments
+demonstrate that HiCBench effectively eval-
+uates the impact of different chunking meth-
+ods across the entire RAG pipeline. More-
+over, HiChunk achieves better chunking quality
+within reasonable time consumption, thereby
+enhancing the overall performance of RAG
+systems. Source code is available at https:
+//github.com/TencentCloudADP/hichunk.
+1 Introduction
+RAG (Retrieval-Augmented Generation) enhances
+the quality of LLM responses to questions beyond
+their training corpus by flexibly integrating exter-
+nal knowledge through the retrieval of relevant con-
+tent chunks as prompts(Lewis et al., 2020). This
+approach helps reduce hallucinations(Chen et al.,
+2024b; Zhang et al., 2025), especially when deal-
+ing with real-time information(He et al., 2022) and
+specialized domain knowledge(Wang et al., 2023;
+Li et al., 2023). Document chunking, a crucial com-
+ponent of RAG systems, significantly impacts the
+quality of retrieved knowledge and, consequently,
+†These authors contributed equally to this work
+*Correspondence
+the quality of responses. Poor chunking methods
+may separate continuous fragments, leading to in-
+formation loss, or combine unrelated information,
+making it more challenging to retrieve relevant con-
+tent. For instance, as noted in Bhat et al. (2025),
+the optimal chunk size varies significantly across
+different datasets.
+Although numerous benchmarks exist for evalu-
+ating RAG systems(Bai et al., 2024; Dasigi et al.,
+2021; Duarte et al., 2024; Zhang et al., 2024; Yang
+et al., 2018b; Ko ˇcisk`y et al., 2018; Pang et al.,
+2021), they mostly focus on assessing either the
+retriever’s capability or the reasoning ability of the
+response model, without valid evaluation of chunk-
+ing methods. We analyzed several datasets to deter-
+mine the average word and sentence count of evi-
+dence. As shown in Figure 1, existing benchmarks
+generally suffer from evidence sparsity, where only
+a few sentences in the document are relevant to
+the query. As illustrated in Figure 1, this sparsity
+of evidence makes these datasets inadequate for
+evaluating the performance of chunking methods.
+In reality, user tasks might be evidence-dense, such
+as enumeration or summarization tasks, requiring
+chunking methods to accurately and completely
+segment semantically continuous fragments. There-
+fore, it is essential to effectively evaluate chunking
+methods.
+To address this, we introduceHierarchical
+Chunking Benchmark(HiCBench), a benchmark
+for document QA designed to evaluate the impact
+of chunking methods on different components of
+RAG systems, including the performance of doc-
+ument chunking, retrievers, and response models.
+HiCBench’s original documents are sourced from
+OHRBench. We curated documents of appropri-
+ate length for the corpus and manually annotated
+chunking points at various hierarchical levels for
+evaluation purposes. These points are used to as-
+sess the chunker’s performance and construct QA
+pairs, followed by using LLMs and the annotated
+29738
+
+=== PDF PAGE 2 ===
+
+Table 1: Statistics of benchmarks.
+Dataset Qasper OHRBench GutenQA
+Num doc 416 1261 100
+Sent d 164 176 5,373
+Word d 4.2k 5.4k 146.5k
+Num qa 1,372 8,498 3,000
+Word q 8.9 20.6 16.0
+Word a 16.0 5.6 26.0
+Word e 239.4 36.5 39.3
+Sent e 10.5 1.7 1.7
+1. Ed Wood (film)Ed Wood is a 1994 American biographical period comedy-drama film directed and produced by Tim Burton, and starring Johnny Depp as cult filmmaker Ed Wood.The film concerns the period in Wood's life when he made his best-known films as well as his relationship with actor Bela Lugosi, played by Martin Landau.Sarah Jessica Parker, Patricia Arquette, Jeffrey Jones, Lisa Marie, and Bill Murray are among the supporting cast.2. Scott DerricksonScott Derrickson (born July 16, 1966) is an American director, screenwriter and producer.He lives in Los Angeles, California.He is best known for directing horror films such as \"Sinister\", \"The Exorcism of Emily Rose\", and \"Deliver Us From Evil\", as well as the 2016 Marvel Cinematic Universe installment, \"Doctor Strange.\”3. Woodson, Arkansas...
+LLM
+bad chunk
+goodchunk
+Q: When was Scott Derrickson Born?
+July 16, 1966
+July 16, 1966
+Both right! Figure 1: Different methods produce the same answer.
+document structure to create evidence-dense QA,
+and finally extracting relevant evidence sentences
+and filtering non-compliant samples using LLMs.
+Additionally, existing document chunking meth-
+ods only consider linear document structure(Duarte
+et al., 2024; Xiao et al., 2024; Zhao et al., 2025;
+Wang et al., 2025), while user problems may in-
+volve fragments with different semantic granular-
+ity, and linear document structure makes it diffi-
+cult to adaptively adjust during retrieval. There-
+fore, we propose theHierarchicalChunking frame-
+work(HiChunk), which employs fine-tuned LLMs
+for hierarchical document structuring and incorpo-
+rates iterative reasoning to address the challenge
+of adapting to extremely long documents. For hier-
+archically structured documents, we introduce the
+Auto-Merge retrieval algorithm, which adaptively
+adjusts the granularity of retrieval chunks based on
+the query, thereby maximizing retrieval quality. In
+this work, our main contributions are as follows:
+• We introduce HiCBench, a benchmark de-
+signed to assess the performance of chun-
+ker and the impact of chunking methods on
+retrievers and response models within RAG
+systems. HiCBench includes information on
+chunking points at different hierarchical levels
+of documents, as well as sources of evidence
+and factual answers related to evidence-dense
+QA, enabling better evaluation of chunking
+methods.
+• We propose the HiChunk framework, a docu-
+ment hierarchical structuring framework that
+allows RAG systems to dynamically adjust
+the semantic granularity of retrieval chunks.
+• We conduct comprehensive performance eval-
+uations on several open-source datasets and
+HiCBench, analyzing the impact of different
+chunking methods across three dimensions:
+performance of chunker, retriever, and respon-
+der.
+2 Related Works
+Traditional Text Chunking.Text chunking di-
+vides continuous text into meaningful units like
+sentences, phrases, and words, with our focus on
+sentence-level chunking. Recent works have ex-
+plored various approaches: (Cho et al., 2022) com-
+bines text chunking with extractive summariza-
+tion using hierarchical representations and deter-
+minantal point processes (DPPs) to minimize re-
+dundancy, (Liu et al., 2021) presents a pipeline
+integrating topical chunking with hierarchical sum-
+marization, and (Zhang et al., 2021) develops an
+adaptive sliding-window model for ASR transcripts
+using phonetic embeddings. However, these LSTM
+and BERT(Devlin et al., 2019) based methods face
+limitations from small context windows and single-
+level chunking capabilities.
+RAG-oriented Document Chunking.Re-
+cent research has explored content-aware document
+chunking strategies for RAG systems. Lumber-
+Chunker(Duarte et al., 2024) uses LLMs to identify
+semantic shifts,but may miss hierarchical relation-
+ships. PIC(Wang et al., 2025) proposes pseudo-
+instruction for document chunking, guide chunking
+via document summaries, though its single-level ap-
+proach may oversimplify document structure. Au-
+toChunker(Jain et al., 2025) employs tree-based
+representations but primarily focuses on noise re-
+duction rather than multi-level granularity. Late
+Chunking(Günther et al., 2024) embeds entire doc-
+uments before chunking to preserve global context,
+but produces flat chunk lists without modeling hier-
+archical relationships. LongRefiner(Jin et al., 2025)
+introduced two-level chunking, but it is constrained
+by the model input length and hallucination issues.
+In contrast, our HiChunk method creates multi-
+level document representations, chunking from
+coarse sections to fine-grained paragraphs. This
+enables RAG systems to retrieve information at ap-
+propriate abstraction levels, bridging fragmented
+knowledge gaps.
+29739
+
+=== PDF PAGE 3 ===
+
+Limitations of Existing Text Chunking Bench-
+marks.The evaluation of text chunking and RAG
+methods heavily relies on benchmark datasets.
+Wiki-727k(Koshorek et al., 2018),VT-SSum(Lv
+et al., 2021) and NewsNet(Wu et al., 2023) are typ-
+ically chunked into flat sequences of paragraphs or
+sentences, without capturing the multi-level organi-
+zation (e.g., sections, subsections, paragraphs) in-
+herent in many real-world documents. This single-
+level representation limits the ability to evaluate
+chunking methods that aim to preserve or lever-
+age document hierarchy, which is crucial for com-
+prehensive knowledge retrieval in complex RAG
+scenarios. While Qasper(Dasigi et al., 2021), Hot-
+potQA(Yang et al., 2018a) and GutenQA(Duarte
+et al., 2024) are designed for RAG-related tasks,
+they do not specifically provide mechanisms or
+metrics for evaluating the efficacy of document
+chunking strategies themselves. Their focus is pri-
+marily on end-to-end RAG performance, where the
+impact of chunking is implicitly measured through
+retrieval and generation quality. This makes it chal-
+lenging to isolate and assess the performance of
+different chunking methods independently, hinder-
+ing systematic advancements in hierarchical docu-
+ment chunking. Our work addresses these gaps by
+proposing a method that explicitly considers multi-
+level document chunking and constructs a novel
+benchmark from a chunking perspective.
+3 HiCBench Construction
+In order to construct the HiCBench dataset, we
+performed additional document hierarchical struc-
+turing and created QA pairs to evaluate document
+chunking quality, building on the OHRBench doc-
+ument corpus(Zhang et al., 2024). It contains doc-
+uments from various fields in the real world, such
+as academia, finance, law, manual, and so on. We
+filter documents with fewer than 4,000 words and
+those exceeding 50 pages. For retained documents,
+we manually annotated the hierarchical structure
+and used these annotations to assist in the gener-
+ation of QA pairs and to assess the accuracy of
+document chunking.
+Task CriteriaTo ensure that the constructed QA
+pairs could effectively evaluate the quality of doc-
+ument chunking, we aimed for the evidence asso-
+ciated with each QA pair to be widely distributed
+across a complete semantic chunk. Failure to fully
+recall such a semantic chunk would result in miss-
+ing evidence, thereby degrading the quality of the
+generated responses. To achieve this objective, we
+established the following standards to regulate the
+generation of QA pairs:
+• Evidence Completeness and Density: Evi-
+dence completeness ensures that the evidence
+relevant to the question is comprehensive and
+necessary within the context. Evidence den-
+sity requires that evidence constitutes a larger
+proportion of the context, enhancing the QA
+pair’s utility for evaluating chunking methods.
+• Fact Consistency: To ensure the constructed
+samples can evaluate the entire retrieval-based
+pipeline, it is essential that the generated re-
+sponses remain consistent with the answers
+when provided with full context, and that the
+questions are answerable.
+Task DefinitionWe define three different task
+types to evaluate the quality of chunking:
+• Evidence-Sparse QA (T0): The evidence re-
+lated to the QA is confined to one or two sen-
+tences within the document.
+• Single-Chunk Evidence-Dense QA (T1): Ev-
+idence sentences related to the QA constitute
+a substantial portion of the context within a
+single complete semantic chunk. The chunk
+size ranges from 512 to 4096 tokens.
+• Multi-Chunk Evidence-Dense QA (T2): Ev-
+idence sentences related to the QA are dis-
+tributed across multiple complete semantic
+chunks, covering a significant portion of the
+context. The chunk size ranges from 256 to
+2048 tokens.
+QA ConstructionWe use a prompt-based ap-
+proach using DeepSeek-R1-0528* to generate can-
+didate QA pairs, followed by a series of filtering
+processes to ensure the retained QA pairs meet the
+criteria of evidence completeness, density, and fact
+consistency. The specific process is as follows:
+1. Document Hierarchical Annotation and
+Summarization: To enable LLMs to gain
+an overall understanding of the specific doc-
+ument D while constructing QA pairs, we
+first generated summaries for corresponding
+sections based on the annotated hierarchical
+structure, denoted asS←LLM s(D). These
+summaries will be used in QA pair generation.
+*https://huggingface.co/deepseek-ai/DeepSeek-R1-0528
+29740
+
+=== PDF PAGE 4 ===
+
+2. Generation of Questions and Answers: We
+randomly selected one or two chunks from
+all eligible document fragments as context
+C, then generated candidate QA pairs using
+(S,C), where(Q,A)←LLM qa(S,C).
+3. Ensuring Evidence Completeness and Den-
+sity: Referring to Friel et al. (2024), we use
+LLMs to extracted sentences from contextC
+related to the QA pair as evidence, denoted
+asE←LLM er(C,Q,A) . To mitigate hal-
+lucination effects, this step will be repeated
+five times, retaining sentences that appeared at
+least four times as the final evidence. Further-
+more, to ensure evidence density, we remove
+samples which the ratio of evidence is less
+than 10% of contextC.
+4. Ensuring Fact Consistency: We applied
+Fact-Cov metric(Xiang et al., 2025) to filter
+test samples. We first extract the facts from
+answerA, denoted as F←LLM f e(Q,A) *.
+ContextsC used for constructing QA pairs
+will be provided to LLMs to generate re-
+sponse R′, denoted as R′←LLM r(Q,C) .
+Then, the Fact-Cov metric will be calculated
+by Fact_Cov←LLM f c(F,R′)*. This pro-
+cess will be repeated 5 times. We retain
+samples with an average Fact-Cov metric ex-
+ceeding 80%. Samples below this threshold
+are deemed unanswerable. All prompts used
+for QA construction are provided in subsec-
+tion A.7.
+4 HiChunk Framework
+This section primarily introduces the HiChunk
+framework. The overall framework is illustrated in
+Figure 2. The aim is for the fine-tuned LLMs to
+comprehend the hierarchical relationships within
+a document and ultimately organize the document
+into a hierarchical structure. This involves two sub-
+tasks: identification of chunking points and deter-
+mination of hierarchy levels. Through prompts,
+HiChunk converts these two subtasks into text
+generation task. In model train of HiChunk, we
+use Gov-report(Huang et al., 2021), Qasper(Dasigi
+et al., 2021) and Wiki-727k(Koshorek et al., 2018)
+to construct training instructions, which are pub-
+licly available datasets with explicit document
+structure. Meanwhile, we augment the training
+*https://github.com/GraphRAG-Bench/GraphRAG-
+Benchmark
+set by randomly shuffling document chapters and
+deleting document content.
+During inference, HiChunk first splits a docu-
+mentD into a list of sentencesS= [s 1,s 2,...,s N ]
+(each sentence is assigned a unique ID). The goal
+is to output a set of hierarchical chunk points that
+partitionS into non-overlapping, semantically com-
+plete chunks. Each chunk point is represented as a
+tuple: (id,level) , it represents a semantic break at
+a specific hierarchy level.
+Although the chunking result of HiChunk has
+semantic integrity, the variability in the chunk
+length distribution caused by the semantic chunk-
+ing method can lead to disparities in semantic gran-
+ularity, which can affect retrieval quality. To miti-
+gate this, we apply a fixed-size chunking approach
+on the results of HiChunk to produceC[1:M], and
+propose the Auto-Merge retrieval algorithm to bal-
+ance issues of varying semantic granularity and the
+semantic integrity of retrieved chunks.
+Iterative InferenceFor documents exceeding
+the model’s input length limit L, we employ a
+sliding window approach. In each iteration, we
+greedily select the longest possible text segment
+starting from the current position that fits within
+the limitL. The model then predicts local chunk
+points for this segment, which are subsequently
+aggregated into the global document structure.
+However, iterative inference suffers from hierar-
+chical drift phenomenon. Due to the lack of com-
+plete structural information about document, the
+model may incorrectly predict the first chunking
+point of the current inference process as a level-1
+segment, thereby causing local hierarchical mis-
+alignment. To mitigate this problem, we construct
+residual text lines from known document struc-
+tures to guide the model making correct hierar-
+chical judgments. Figure 3 represents a simple
+case to illustrate how the residual lines work. In
+short, HiChunk compress the predicted document
+structure, and bring it into subsequent inference to
+maintain the model’s awareness of the global doc-
+ument structure. The complete iterative inference
+procedure is illustrated in algorithm 1.
+Auto-Merge Retrieval AlgorithmTo balance
+the semantic richness and completeness of recalled
+contexts, we propose Auto-Merge retrieval algo-
+rithm. This algorithm uses a series of conditions to
+control the extent to which child nodes are merged
+upward into parent nodes. Auto-Merge algorithm
+traverses the query-ranked chunksCsorted
+[1:M] , using
+29741
+
+=== PDF PAGE 5 ===
+
+𝑏=𝑎𝑟𝑔𝑚𝑎𝑥!"(𝑆𝑎:𝑏+≤𝐿)𝑆[𝑎:𝑏]
+Doc
+Seg5Seg2Seg1
+Seg5.1Seg5.3
+…
+…
+……[1]: ........[2]: .......[3]: .......…[N]: ......𝑆[1:𝑁]
+HiChunkQuery
+Split bysentences
+Response𝑪[𝟏:𝑴]
+𝑎=1updatea
+by iterative inference
+Until 𝒂=𝑵
+Query
+𝑮𝑪𝑷𝟏
+𝑮𝑪𝑷𝒌
+(a) Iterative inference(b) Auto-Merge retrieve𝑳𝑪𝑷𝟏:𝒌
+Figure 2: Overview of the proposed HiChunk framework. (a) Iterative inference pipeline: The document is split into
+sentences; we iteratively predict hierarchical chunk points within the model’s context limit. (b) Auto-Merge retrieval:
+Based on the hierarchical chunks, the algorithm adaptively merges fine-grained child nodes into coarse-grained
+parent nodes to balance semantic integrity and retrieval granularity.
+N to record the nodes that have been recalled. Dur-
+ing thei-th step of the traversal, we first record the
+current used token budget,Tused =∑
+n∈N len(n).
+We then addCsorted
+[i] toN and denote the parent of
+Csorted
+[i] byp. Finally, we merge upward when the
+following conditions are met:
+• Coherence (Cond1):The retrieval set con-
+tains multiple children from the same parent.
+Formally, the number of retrieved children
+must be at least two:|N∩children(p)|≥2.
+• Substantiality (Cond2):The total length
+of the retrieved children covers a signifi-
+cant portion of the parent text. We require∑
+n∈(N∩children(p)) len(n)≥θ ∗ ∗len(p) .
+Here,θ∗ is an adaptive threshold defined as:
+θ∗(Tused,p) = 1
+3×
+(
+1 + Tused
+Tmax
+)
+where Tused is the token used and Tmax is
+the total budget. This design ensures that θ∗
+starts low and increases as the budget fills up.
+Intuitively, this encourageshigher-ranking
+chunks(when Tused is low) to merge more
+aggressively, prioritizing structural integrity
+for the more relevant chunks.
+• Feasibility (Cond3):The remaining token
+budget is sufficient to accommodate the full
+parent node after replacing its children.
+The entire retrieval algorithm process is illustrated
+in algorithm 2.
+# CastJohnny DeppasEd Wood: Burton approached Depp and ...At the time, Depp was depressed about films and filmmaking....# ProductionWritersScott Alexander and Larry Karaszewskiconceived the idea for ...Alexander even proposed making a documentary about Wood ......
+# Ed Wood (film)Ed Woodis a 1994 Americanbiographicalcomedy-dramafilm directed and produced by ...The film was conceived by writersScott Alexander and ...## PlotIn 1952, aspiring writer and directorEd Woodis ...After learning that producerGeorge Weissis trying to ...<input content>
+# Ed Wood (film)Ed Woodis a 1994 Americanbiographicalcomedy-dramafilm directed and produced by ...The film was conceived by writersScott Alexander and...## PlotIn 1952, aspiring writer and directorEd Woodis ...After learning that producerGeorge Weissis trying to ...## CastJohnny DeppasEd Wood: Burton approached Depp and ...At the time, Depp was depressed about films and filmmaking....## ProductionWritersScott Alexander and Larry Karaszewskiconceived the idea for ...Alexander even proposed making a documentary about Wood ......
+# Ed Wood (film)Ed Woodis a 1994 Americanbiographicalcomedy-dramafilm directed and produced by ...The film was conceived by writersScott Alexander and ...<30 lines>Ed Woodwas originally in development atColumbia Pictures...## PlotIn 1952, aspiring writer and directorEd Woodis ...After learning that producerGeorge Weissis trying to ...<20 lines>Lugosi dies, leaving Ed without a star. After learning ...CastJohnny DeppasEd Wood: Burton approached Depp and ...At the time, Depp was depressed about films and filmmaking....ProductionWritersScott Alexander and Larry Karaszewskiconceived the idea for ...Alexander even proposed making a documentary about Wood ......
+Compress
+Infer
+Known Structure
+Input without residual lines
+Infer
+Concatenate
+Input with residual lines
+Hierarchical driftCorrect prediction
+Figure 3: Illustration of how residual lines work in
+iterative inference.
+5 Experiments
+5.1 Datasets and Metrics
+The test subsets of Gov-report(Huang et al., 2021)
+and Qasper(Dasigi et al., 2021) datasets will be
+used for evaluation of chunking accuracy. For
+the Gov-report dataset, we only retain documents
+with document word count greater than 5k for
+experiments. To evaluate the accuracy of the
+chunking points, we use the F1 metrics of the
+chunking points. TheF1 L1 andF1 L2 correspond
+to the chunking points of the level 1 and level
+2 chunks, respectively. And the F1 Lall metric
+does not consider the level of the chunking point.
+The Qasper, GutenQA(Duarte et al., 2024), and
+OHRBench(Zhang et al., 2024) datasets contain
+evidence relevant to the question. These datasets
+will be used in the evaluation for context retrieval.
+For the full RAG pipeline evaluation, we used
+the publicly available datasets LongBench(Bai
+et al., 2024), Qasper, GutenQA, and OHRBench.
+We use the F1 score and Rouge metrics to assess
+the quality of LLM responses. All experiments are
+29742
+
+=== PDF PAGE 6 ===
+
+conducted in the code repository of LongBench*.
+Furthermore, HiCBench will be used for compre-
+hensive evaluation, including chunking accuracy,
+evidence recall rate, and RAG response quality as-
+sessment. To avoid biases from sparse text quality
+evaluation metrics, we employ the Fact-Cov(Xiang
+et al., 2025) metric for response quality evaluation
+of HiCBench. The Fact-Cov metric is repeatedly
+calculated 5 times to take the average. Statistics
+information of datasets used are shown in Table A1.
+5.2 Comparison Methods
+We primarily compared two types of chunk-
+ing methods: rule-based chunking methods and
+semantic-based chunking methods. All the compar-
+ison methods are as follows:
+• FC200: Fixed chunking is a rule-based
+method, which first divide the document into
+sentences and then merge sentences based on
+a fixed chunking size. Here, the fixed chunk-
+ing size is 200.
+• SC: Semantic Chunker(Xiao et al., 2024) uses
+an embedding model to calculate the similar-
+ity between adjacent paragraphs for chunking.
+We use bge-large-en-v1.5(Xiao et al., 2024)
+as the embedding model.
+• LC: LumberChunker(Duarte et al., 2024) em-
+ploys LLMs to predict the positions for chunk-
+ing. In our experiments, we use Deepseek-r1-
+0528(DeepSeek-AI, 2025) as the prediction
+model. The sampling temperature set to 0.1.
+• HC200: HiChunk is the proposed method. In
+the model training for HiChunk. We further
+chunk the chunks of HiChunk by the fixed
+chunking method. The fixed chunking size is
+set to 200, denoted as HC200.
+• HC200+AM: "+AM" represents the result of
+introducing Auto-Merge retrieval algorithm
+on the basis of HC200.
+5.3 Experimental Settings
+In the model training of HiChunk, Gov-
+report(Huang et al., 2021), Qasper(Dasigi et al.,
+2021) and Wiki-727k(Koshorek et al., 2018) are the
+train datasets, which are publicly available datasets
+with explicit document structure. We use Qwen3-
+4B(Team, 2025) as the base model, with a learning
+*https://github.com/THUDM/LongBench/tree/main
+rate of 1e-5 and a batch size of 64. The maximum
+length of training and inference is set to 8192 and
+16384 tokens, respectively. Meanwhile, the length
+of each sentence is limited to within 100 characters.
+Due to the varying sizes of chunks resulting from
+semantic-based chunking, we limit the length of
+the retrieved context based on the number of to-
+kens rather than the number of chunks for a fair
+comparison. The maximum length of the retrieved
+context is set to 4096 tokens. We also compare the
+performance of different chunking methods under
+different retrieved context length settings in sub-
+section 5.6. In the RAG evaluation process, we
+consistently use Bge-m3(Chen et al., 2024a) as the
+embedding model for context retrieval. As for the
+response model, we use three different series of
+LLMs with varying scales: Llama3.1-8B(Dubey
+et al., 2024), Qwen3-8B, and Qwen3-32B.
+Table 2: Chunking accuracy. HC means HiChunk with-
+out fixed-size chunking. The best result is inbold.
+Chunk Method SC LC HC
+Qasper
+F1L1 0.0759 0.54810.6742
+F1L2 - -0.5169
+F1Lall 0.1007 0.66570.9441
+Gov-Report
+F1L1 0.0298 0.17950.9505
+F1L2 - -0.8895
+F1Lall 0.0616 0.56310.9882
+HiCBench
+F1L1 0.0487 0.28490.4841
+F1L2 - -0.3140
+F1Lall 0.1507 0.48580.5450
+5.4 Chunking Accuracy
+To comprehensively evaluate the performance of
+the semantic-based chunking method, we con-
+ducted experiments using two publicly available
+datasets, along with the proposed benchmark, to as-
+sess the cut-point accuracy of the chunking method.
+Since the SC and LC chunking methods are limited
+to performing single-level chunking, we evaluated
+only the F1 scores for the initial level of chunk-
+ing points and the F1 scores without regard for the
+hierarchy of chunking points. The evaluation re-
+sults are presented in Table 2. In the Qasper and
+Gov-report datasets, which serve as in-domain test
+sets, the HC method shows a significant improve-
+ment in chunk accuracy compared to the SC and
+LC methods. Additionally, in HiCBench, an out-
+of-domain test set, the HC method exhibits even
+more substantial accuracy improvements. These
+findings demonstrate that HC enhances the base
+model’s performance in document chunking by fo-
+29743
+
+=== PDF PAGE 7 ===
+
+Table 3: RAG-pipeline evaluation results (ERec: Evidence Recall, FC: Fact Coverage). The best result is inbold,
+and the sub-optimal result is in underlined
+Chunk LongBench Qasper GutenQA OHRBench(T0) HiCBench(T1) HiCBench(T2)
+Method Score ERec F1 ERec RougeERec Rouge ERec FC Rouge ERec FC Rouge
+Llama3.1-8B
+FC200 42.49 84.08 47.2664.43 30.03 67.03 51.01 74.84 47.82 28.4374.61 46.79 30.97
+SC 42.12 82.08 47.4758.30 28.58 62.65 49.10 72.14 46.80 28.4373.49 45.28 30.92
+LC 42.73 87.0848.2063.67 30.22 68.4251.85 76.64 50.8429.62 76.12 49.1232.01
+HC200 43.17 86.1648.0965.13 29.95 68.25 51.33 78.5249.87 29.38 78.7649.11 31.80
++AM 42.90 87.4948.9565.47 30.33 67.84 51.92 81.5955.58 30.04 80.9653.66 33.04
+Qwen3-8B
+FC200 43.95 84.32 45.1064.50 33.47 67.07 48.18 74.06 47.35 33.8372.95 43.45 35.27
+SC 43.54 82.22 44.5558.37 32.71 62.18 46.79 71.42 46.07 33.3072.36 42.97 34.76
+LC 44.83 87.4346.0563.67 33.87 68.7949.28 75.53 48.2734.12 75.14 46.8035.93
+HC200 43.90 86.4945.9565.20 33.89 68.57 49.06 77.6847.37 34.30 78.1046.20 36.32
++AM 44.41 87.8545.8265.53 34.15 68.31 49.61 81.0350.75 35.26 80.6549.02 37.28
+Qwen3-32B
+FC200 46.33 84.32 46.4964.50 44.86 67.07 46.89 74.06 63.20 35.7072.95 60.87 37.17
+SC 46.29 82.22 46.3958.37 43.59 62.18 45.43 71.26 61.09 35.6472.36 59.23 37.09
+LC 47.43 87.4346.8263.67 44.45 68.79 47.92 75.53 64.7636.15 75.14 62.7538.02
+HC200 46.71 86.4946.9965.20 44.83 68.57 47.71 77.6863.93 36.55 78.1062.51 38.26
++AM 46.92 87.8547.2565.53 44.94 68.31 47.89 81.0368.12 37.29 80.6566.36 39.37
+cusing exclusively on the chunking task. More-
+over, as indicated in the subsequent experimental
+results presented in subsection 5.5, the accuracy im-
+provement of the HC method in document chunk-
+ing leads to enhanced performance throughout the
+RAG pipeline. This includes improvements in the
+quality of evidence retrieval and model responses.
+5.5 RAG-pipeline Evaluation
+We evaluated the performance of various chunk-
+ing methods on the LongBench, Qasper, GutenQA,
+OHRBench, and HiCBench datasets, with the re-
+sults detailed in Table 3. The results demonstrate
+that the HC200+AM method achieves either op-
+timal or suboptimal performance on most Long-
+Bench subsets. When considering average scores,
+LumberChunk remains a strong baseline. How-
+ever, as noted in Table A1, both GutenQA and
+OHRBench datasets exhibit the feature of evi-
+dence sparsity, meaning that the evidence related
+to QA pairs is derived from only a few sentences
+within the document. Consequently, the different
+chunking methods show minimal variation in evi-
+dence recall and response quality metrics on these
+datasets. For instance, using Qwen3-32B as the
+response model on the GutenQA dataset, the evi-
+dence recall metrics of FC200 and HC200+AM
+are 64.5 and 65.53, and the Rouge metrics are
+44.86 and 44.94, respectively. Another example
+is OHRBench dataset, the evidence recall met-
+rics and Rouge metrics of FC200, LC, HC200
+and HC200+AM are very close. In contrast, the
+Qasper and HiCBench datasets contain denser evi-
+dence, where a better chunking method results in
+higher evidence recall and improved response qual-
+ity. Again using Qwen3-32B as an example, on the
+T1 task of HiCBench dataset, the evidence recall
+metric for FC200 and HC200+AM are 74.06 and
+81.03, the Fact-Cov metrics are 63.20 and 68.12,
+and the Rouge metrics are 35.70 and 37.29, respec-
+tively. These findings suggest that the evidence-
+dense QA in the HiCBench dataset is better suited
+for evaluating the quality of chunking methods, en-
+abling researchers to identify bottlenecks within
+the overall RAG pipeline.
+5.6 Influence of Retrieval Token Budget
+Since HiCBench is more effective in assessing the
+performance of chunking methods, we evaluated
+the impact of our proposed method on theT1 task
+of HiCBench under different retrieve token budgets:
+2k, 2.5k, 3k, 3.5k and 4k tokens. We compared the
+effects of various chunking methods by calculating
+the Rouge metrics between responses and answers,
+as well as the Fact-Cov metrics. The experimen-
+tal findings are illustrated in Figure 4. The results
+demonstrate that a larger retrieval token budget usu-
+ally leads to better response quality, so it is neces-
+sary to compare different chunking methods under
+the same retrieval token budget. HC200+AM con-
+sistently achieves superior response quality across
+various retrieve token budget settings. These ex-
+perimental results underscore the effectiveness of
+HC200+AM method. We further present the cor-
+respond curves of the evidence recall metrics in
+subsection A.4.
+29744
+
+=== PDF PAGE 8 ===
+
+2k 2.5k 3k 3.5k 4k27.5
+28.0
+28.5
+29.0
+29.5
+30.0
+Rouge
+Llama3.1-8b
+FC200
+SC
+LC
+HC200
+HC200+AM
+2k 2.5k 3k 3.5k 4k
+32.0
+32.5
+33.0
+33.5
+34.0
+34.5
+35.0
+35.5
+Qwen3-8b
+2k 2.5k 3k 3.5k 4k
+34.0
+34.5
+35.0
+35.5
+36.0
+36.5
+37.0
+Qwen3-32b
+2k 2.5k 3k 3.5k 4k
+44
+46
+48
+50
+52
+54
+56
+Fact Cov(%)
+2k 2.5k 3k 3.5k 4k
+43
+44
+45
+46
+47
+48
+49
+50
+51
+2k 2.5k 3k 3.5k 4k
+54
+56
+58
+60
+62
+64
+66
+68
+Figure 4: Performance of HiCBench(T1) under different retrieval token budget from 2k to 4k.
+Llama3.1-8b Qwen3-8b/32b
+70
+72
+74
+76
+78
+80
+82
+84
+Evidence Recall
+L1 L2 L3 L4 LA
+Llama3.1-8b Qwen3-8b Qwen3-32b
+26
+28
+30
+32
+34
+36
+38
+40
+Rouge
+Llama3.1-8b Qwen3-8b Qwen3-32b
+40
+45
+50
+55
+60
+65
+70
+Fact-Cov
+Figure 5: Evidence recall metric across different maximum level on HiCBench(T1 andT 2).
+5.7 Effect of Maximum Hierarchical Level
+In this section, we examine the impact of limiting
+the maximum hierarchical level of document struc-
+ture obtained by HiChunk. The maximum level
+ranges from 1 to 4, denoted asL1 toL4, whileLA
+represents no limitation on the maximum level. We
+measure the evidence recall metric on different set-
+tings. As shown in Figure 5. This result reveals that
+the Auto-Merge degrades the performance of RAG
+system in theL1 setting due to the overly coarse-
+grained semantics ofL1 chunks. As the maximum
+level increases from 1 to 3, the evidence recall met-
+ric also gradually improves and remains largely
+unchanged thereafter. These findings highlight the
+importance of document hierarchical structure for
+enhancing RAG systems.
+5.8 Ablation Study for Auto-Merge
+To verify the necessity and robustness of the rule
+design in the Auto-Merge algorithm, we conducted
+ablation experiments on its core merging condi-
+tions, using Qwen3-8B as the generator. The re-
+sults are presented in Table 4.
+When onlyCond3 (token budget constraint) is
+retained, the algorithm achieves optimal perfor-
+Table 4: Ablation study for merging conditions of Auto-
+Merge.
+Dataset Metrics Condition Combination
+Cond3OnlyCond1+3Cond1+2+3
+HiCBench
+ERec 81.43 80.55 80.86
+Rouge 36.33 36.08 36.17
+Fact-Cov 51.35 50.70 49.97
+LongBenchScore 43.25 43.80 44.41
+Qasper ERec 86.73 87.54 87.85
+F1 45.29 45.83 45.82
+OHRBenchERec 66.72 68.18 68.31
+Rouge 48.78 49.56 49.61
+mance on evidence-dense tasks (HiCBench), with
+ERec of 81.43, Rouge of 36.33, and Fact-Cov of
+51.35. However, its performance degrades notably
+on evidence-sparse tasks: the LongBench Score
+drops to 43.25, and the ERec on OHRBench is
+only 66.72. This indicates that relying solely on
+a single rule leads to poor generalization across
+diverse task types, lacking sufficient robustness.
+After addingCond1 (semantic intersection con-
+straint), the ERec of Qasper and OHRBench in-
+creases by 0.81 and 1.46, respectively, proving
+that semantic intersection constraints can miti-
+gate "meaningless merging", thereby enhancing
+retrieval accuracy for evidence-sparse tasks.
+29745
+
+=== PDF PAGE 9 ===
+
+With the addition of Cond2 (length ratio con-
+straint), the performance across all datasets tends
+to be balanced: LongBench Score increases to
+44.41 (increases by 1.16), while HiCBench perfor-
+mance only slightly decreases (ERec decrease by
+0.57). These results confirm that the combination
+of multiple complementary rules enables the Auto-
+Merge algorithm to adapt to both evidence-dense
+and evidence-sparse tasks, significantly improving
+its robustness. Furthermore, we conducted a sensi-
+tivity analysis on the thresholdθ∗ ofCond2, and
+the detailed results are provided in subsection A.3.
+5.9 Auto-Merge on Flat vs. Hierarchical
+Chunking
+We conduct an ablation study to disentangle
+whether the performance gain originates from the
+hierarchical chunk structure or the Auto-Merge
+(AM) heuristic alone. We apply AM to flat single-
+level chunking methods (SC, LC) and the first-level-
+only variant of our approach (HCL1), and compare
+them with our full hierarchical chunking (HC) on
+HiCBench, using Llama3.1-8B as the generator.
+Table 5: Ablation: Auto-Merge on flat vs. hierarchi-
+cal chunking (Llama3.1-8B on HiCBench). ∆ denotes
+performance change after applying Auto-Merge.
+Method ERec ∆ Rouge∆ Fact-Cov∆
+SC+AM 73.35+0.60 29.48-0.07 45.92-0.19
+LC+AM 76.86+0.46 30.81+0.10 50.21+0.16
+HCL1+AM 77.66+0.96 30.45+0.05 49.68+0.42
+HC+AM81.30 +2.67 31.41+0.94 54.70+5.17
+As shown in Table 5, applying AM to flat single-
+level chunking (SC, LC, HCL1) yields negligible or
+no improvements across all metrics. This demon-
+strates that the AM heuristic cannot effectively
+improve retrieval quality when operating on non-
+hierarchical, flat chunk outputs. In contrast, our
+full hierarchical chunking (HC) combined with AM
+achieves large and consistent gains: ERec improves
+by 2.67 over HC alone.
+These results confirm that the strong perfor-
+mance of our method stems from the synergy be-
+tween hierarchical document structuring and the
+Auto-Merge retrieval algorithm, rather than the
+merging heuristic in isolation.
+5.10 Few-shot Prompting Experiments
+To verify the necessity of fine-tuning, we have
+supplemented few-shot prompted experiments on
+HiCBench dataset. The base model is Qwen3-4B
+(consistent with the base model in the paper). We
+set two scenarios (1-shot and 3-shot) to compare
+their performance with the fine-tuned HiChunk,
+thereby validating the core value of fine-tuning for
+hierarchical chunking tasks. We use Qwen3-8B to
+generate response. The supplementary experimen-
+tal results are presented in Table 6.
+Table 6: Comparison of Chunking Accuracy and End-to-
+End RAG Performance: Few-Shot Prompting (1-shot/3-
+shot) vs. Fine-Tuned HiChunk on HiCBench.
+Metric Method
+HC1−shot HC3−shot HCf t
+Chunking Accuracy
+F1L1 0.1784 0.25000.4841
+F1L2 0.1128 0.12030.3140
+F1ALL 0.2328 0.21990.5450
+RAG Performance (w/o Auto-Merge)
+ERec 72.35 72.2677.87
+Rouge 33.14 33.0835.21
+Fact-Cov 44.02 43.9746.84
+RAG Performance (w Auto-Merge)
+ERec 73.47 73.0580.86
+Rouge 34.53 34.0436.17
+Fact-Cov 46.62 46.5549.97
+The experimental results demonstrate that in-
+creasing the number of few-shot examples did not
+improve the model’s performance in chunking accu-
+racy or the full-link performance of the subsequent
+RAG pipeline. Furthermore, all few-shot schemes
+show a significant performance gap compared to
+the fine-tuned HiChunk method. This fully con-
+firms that fine-tuning is a necessary prerequisite
+for achieving high-quality hierarchical chunking of
+HiChunk.
+6 Conclusion
+This paper begins by analyzing the shortcomings
+of current benchmarks used for evaluating RAG
+systems, specifically highlighting how evidence
+sparsity makes them unsuitable for assessing differ-
+ent chunking methods. As a solution, we introduce
+HiCBench, a QA benchmark focused on hierarchi-
+cal document chunking, which validly evaluates
+the impact of various chunking methods on the en-
+tire RAG process. Additionally, we propose the
+HiChunk framework, which, when combined with
+the Auto-Merge retrieval algorithm, significantly
+enhances the quality of chunking, retrieval, and
+model responses compared to other baselines.
+29746
+
+=== PDF PAGE 10 ===
+
+7 Limitations
+While the HiChunk framework theoretically sup-
+ports the prediction and processing of documents
+with more than three hierarchical levels, the perfor-
+mance gain from high-level structures exhibits a
+trend of diminishing marginal returns in practical
+scenarios. This is primarily constrained by two uni-
+versal challenges faced by all hierarchical chunking
+methods:
+1. Data scarcity, as publicly available training
+data for documents with high hierarchical lev-
+els is extremely limited.
+2. The funnel effect, where high-level modeling
+relies on the prediction accuracy of lower lev-
+els, leading to decreasing accuracy guarantees
+as the hierarchy deepens.
+These two points do not indicate that HiChunk
+is unable to handle high-level document structures,
+but rather reflect universal challenges faced by all
+hierarchical chunking methods. In fact, even under
+the no-level-limit (LA) setting, HC200+AM still
+outperform those of other baseline methods (as
+shown in Table 3), fully demonstrating that the
+core value of HiChunk’s hierarchical design is not
+affected by structures beyond three levels. How to
+model high-level structures more efficiently will be
+the focus of future research.
+References
+Yushi Bai, Xin Lv, Jiajie Zhang, Hongchang Lyu,
+Jiankai Tang, Zhidian Huang, Zhengxiao Du, Xiao
+Liu, Aohan Zeng, Lei Hou, Yuxiao Dong, Jie Tang,
+and Juanzi Li. 2024. LongBench: A bilingual, multi-
+task benchmark for long context understanding. In
+Proceedings of the 62nd Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 1:
+Long Papers), pages 3119–3137, Bangkok, Thailand.
+Association for Computational Linguistics.
+Sinchana Ramakanth Bhat, Max Rudat, Jannis Spiek-
+ermann, and Nicolas Flores-Herr. 2025. Rethink-
+ing chunk size for long-document retrieval: A multi-
+dataset analysis.arXiv preprint arXiv:2505.21700.
+Jianlyu Chen, Shitao Xiao, Peitian Zhang, Kun
+Luo, Defu Lian, and Zheng Liu. 2024a. M3-
+embedding: Multi-linguality, multi-functionality,
+multi-granularity text embeddings through self-
+knowledge distillation. InFindings of the Asso-
+ciation for Computational Linguistics: ACL 2024,
+pages 2318–2335, Bangkok, Thailand. Association
+for Computational Linguistics.
+Jiawei Chen, Hongyu Lin, Xianpei Han, and Le Sun.
+2024b. Benchmarking large language models in
+retrieval-augmented generation. InProceedings of
+the AAAI Conference on Artificial Intelligence, vol-
+ume 38, pages 17754–17762.
+Sangwoo Cho, Kaiqiang Song, Xiaoyang Wang, Fei
+Liu, and Dong Yu. 2022. Toward unifying text seg-
+mentation and long document summarization.arXiv
+preprint arXiv:2210.16422.
+Pradeep Dasigi, Kyle Lo, Iz Beltagy, Arman Cohan,
+Noah A. Smith, and Matt Gardner. 2021. A dataset
+of information-seeking questions and answers an-
+chored in research papers. InProceedings of the
+2021 Conference of the North American Chapter of
+the Association for Computational Linguistics: Hu-
+man Language Technologies, pages 4599–4610, On-
+line. Association for Computational Linguistics.
+DeepSeek-AI. 2025. Deepseek-r1: Incentivizing rea-
+soning capability in llms via reinforcement learning.
+Preprint, arXiv:2501.12948.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2019. Bert: Pre-training of deep
+bidirectional transformers for language understand-
+ing. InProceedings of the 2019 conference of the
+North American chapter of the association for com-
+putational linguistics: human language technologies,
+volume 1 (long and short papers), pages 4171–4186.
+André V . Duarte, João DS Marques, Miguel Graça,
+Miguel Freire, Lei Li, and Arlindo L. Oliveira. 2024.
+LumberChunker: Long-form narrative document seg-
+mentation. InFindings of the Association for Com-
+putational Linguistics: EMNLP 2024, pages 6473–
+6486, Miami, Florida, USA. Association for Compu-
+tational Linguistics.
+Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey,
+Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman,
+Akhil Mathur, Alan Schelten, Amy Yang, Angela
+Fan, and 1 others. 2024. The llama 3 herd of models.
+arXiv e-prints, pages arXiv–2407.
+Robert Friel, Masha Belyi, and Atindriyo Sanyal. 2024.
+Ragbench: Explainable benchmark for retrieval-
+augmented generation systems.arXiv preprint
+arXiv:2407.11005.
+Michael Günther, Isabelle Mohr, Daniel James Williams,
+Bo Wang, and Han Xiao. 2024. Late chunking: con-
+textual chunk embeddings using long-context embed-
+ding models.arXiv preprint arXiv:2409.04701.
+Hangfeng He, Hongming Zhang, and Dan Roth. 2022.
+Rethinking with retrieval: Faithful large language
+model inference.arXiv preprint arXiv:2301.00303.
+Luyang Huang, Shuyang Cao, Nikolaus Parulian, Heng
+Ji, and Lu Wang. 2021. Efficient attentions for long
+document summarization. InProceedings of the 2021
+Conference of the North American Chapter of the
+Association for Computational Linguistics: Human
+Language Technologies, pages 1419–1436, Online.
+Association for Computational Linguistics.
+29747
+
+=== PDF PAGE 11 ===
+
+Arihant Jain, Purav Aggarwal, and Anoop Saladi. 2025.
+Autochunker: Structured text chunking and its evalu-
+ation. InProceedings of the 63rd Annual Meeting of
+the Association for Computational Linguistics (Vol-
+ume 6: Industry Track), pages 983–995.
+Jiajie Jin, Xiaoxi Li, Guanting Dong, Yuyao Zhang, Yu-
+tao Zhu, Yongkang Wu, Zhonghua Li, Ye Qi, and
+Zhicheng Dou. 2025. Hierarchical document refine-
+ment for long-context retrieval-augmented genera-
+tion. InProceedings of the 63rd Annual Meeting of
+the Association for Computational Linguistics (Vol-
+ume 1: Long Papers), pages 3502–3520, Vienna,
+Austria. Association for Computational Linguistics.
+Tomáš Koˇcisk`y, Jonathan Schwarz, Phil Blunsom, Chris
+Dyer, Karl Moritz Hermann, Gábor Melis, and Ed-
+ward Grefenstette. 2018. The narrativeqa reading
+comprehension challenge.Transactions of the Asso-
+ciation for Computational Linguistics, 6:317–328.
+Omri Koshorek, Adir Cohen, Noam Mor, Michael Rot-
+man, and Jonathan Berant. 2018. Text segmentation
+as a supervised learning task. InProceedings of
+the 2018 Conference of the North American Chap-
+ter of the Association for Computational Linguistics:
+Human Language Technologies, Volume 2 (Short Pa-
+pers), pages 469–473, New Orleans, Louisiana. As-
+sociation for Computational Linguistics.
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio
+Petroni, Vladimir Karpukhin, Naman Goyal, Hein-
+rich Küttler, Mike Lewis, Wen-tau Yih, Tim Rock-
+täschel, and 1 others. 2020. Retrieval-augmented gen-
+eration for knowledge-intensive nlp tasks.Advances
+in neural information processing systems, 33:9459–
+9474.
+Xianzhi Li, Samuel Chan, Xiaodan Zhu, Yulong Pei,
+Zhiqiang Ma, Xiaomo Liu, and Sameena Shah. 2023.
+Are chatgpt and gpt-4 general-purpose solvers for
+financial text analytics? a study on several typical
+tasks.arXiv preprint arXiv:2305.05862.
+Yang Liu, Chenguang Zhu, and Michael Zeng. 2021.
+End-to-end segmentation-based news summarization.
+arXiv preprint arXiv:2110.07850.
+Tengchao Lv, Lei Cui, Momcilo Vasilijevic, and Furu
+Wei. 2021. Vt-ssum: A benchmark dataset for video
+transcript segmentation and summarization.arXiv
+preprint arXiv:2106.05606.
+Richard Yuanzhe Pang, Alicia Parrish, Nitish Joshi,
+Nikita Nangia, Jason Phang, Angelica Chen, Vishakh
+Padmakumar, Johnny Ma, Jana Thompson, He He,
+and 1 others. 2021. Quality: Question answer-
+ing with long input texts, yes!arXiv preprint
+arXiv:2112.08608.
+Saba Sturua, Isabelle Mohr, Mohammad Kalim Akram,
+Michael Günther, Bo Wang, Markus Krimmel, Feng
+Wang, Georgios Mastrapas, Andreas Koukounas,
+Nan Wang, and 1 others. 2024. jina-embeddings-
+v3: Multilingual embeddings with task lora.arXiv
+preprint arXiv:2409.10173.
+Qwen Team. 2025. Qwen3 technical report.Preprint,
+arXiv:2505.09388.
+Cunxiang Wang, Xiaoze Liu, Yuanhao Yue, Xiangru
+Tang, Tianhang Zhang, Cheng Jiayang, Yunzhi Yao,
+Wenyang Gao, Xuming Hu, Zehan Qi, and 1 others.
+2023. Survey on factuality in large language models:
+Knowledge, retrieval and domain-specificity.arXiv
+preprint arXiv:2310.07521.
+Zhitong Wang, Cheng Gao, Chaojun Xiao, Yufei Huang,
+Shuzheng Si, Kangyang Luo, Yuzhuo Bai, Wenhao
+Li, Tangjian Duan, Chuancheng Lv, and 1 others.
+2025. Document segmentation matters for retrieval-
+augmented generation. InFindings of the Association
+for Computational Linguistics: ACL 2025, pages
+8063–8075.
+Haoqian Wu, Keyu Chen, Haozhe Liu, Mingchen Zhuge,
+Bing Li, Ruizhi Qiao, Xiujun Shu, Bei Gan, Liang-
+sheng Xu, Bo Ren, and 1 others. 2023. Newsnet:
+A novel dataset for hierarchical temporal segmenta-
+tion. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages
+10669–10680.
+Zhishang Xiang, Chuanjie Wu, Qinggang Zhang,
+Shengyuan Chen, Zijin Hong, Xiao Huang, and Jin-
+song Su. 2025. When to use graphs in rag: A com-
+prehensive analysis for graph retrieval-augmented
+generation.arXiv preprint arXiv:2506.05690.
+Shitao Xiao, Zheng Liu, Peitian Zhang, Niklas Muen-
+nighoff, Defu Lian, and Jian-Yun Nie. 2024. C-pack:
+Packed resources for general chinese embeddings. In
+Proceedings of the 47th International ACM SIGIR
+Conference on Research and Development in Infor-
+mation Retrieval, SIGIR ’24, page 641–649, New
+York, NY , USA. Association for Computing Machin-
+ery.
+Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio,
+William Cohen, Ruslan Salakhutdinov, and Christo-
+pher D. Manning. 2018a. HotpotQA: A dataset for
+diverse, explainable multi-hop question answering.
+InProceedings of the 2018 Conference on Empiri-
+cal Methods in Natural Language Processing, pages
+2369–2380, Brussels, Belgium. Association for Com-
+putational Linguistics.
+Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Ben-
+gio, William W Cohen, Ruslan Salakhutdinov, and
+Christopher D Manning. 2018b. Hotpotqa: A dataset
+for diverse, explainable multi-hop question answer-
+ing.arXiv preprint arXiv:1809.09600.
+Junyuan Zhang, Qintong Zhang, Bin Wang, Linke
+Ouyang, Zichen Wen, Ying Li, Ka-Ho Chow, Con-
+ghui He, and Wentao Zhang. 2024. Ocr hin-
+ders rag: Evaluating the cascading impact of ocr
+on retrieval-augmented generation.arXiv preprint
+arXiv:2412.02592.
+Qinglin Zhang, Qian Chen, Yali Li, Jiaqing Liu, and
+Wen Wang. 2021. Sequence model with self-adaptive
+29748
+
+=== PDF PAGE 12 ===
+
+sliding window for efficient spoken document seg-
+mentation. In2021 IEEE Automatic Speech Recog-
+nition and Understanding Workshop (ASRU), pages
+411–418. IEEE.
+Yue Zhang, Yafu Li, Leyang Cui, Deng Cai, Lemao Liu,
+Tingchen Fu, Xinting Huang, Enbo Zhao, Yu Zhang,
+Yulong Chen, and 1 others. 2025. Siren’s song in the
+ai ocean: A survey on hallucination in large language
+models.Computational Linguistics, pages 1–46.
+Jihao Zhao, Zhiyuan Ji, Zhaoxin Fan, Hanyu Wang,
+Simin Niu, Bo Tang, Feiyu Xiong, and Zhiyu Li.
+2025. MoC: Mixtures of text chunking learners for
+retrieval-augmented generation system. InProceed-
+ings of the 63rd Annual Meeting of the Association
+for Computational Linguistics (Volume 1: Long Pa-
+pers), pages 5172–5189, Vienna, Austria. Associa-
+tion for Computational Linguistics.
+A Appendix
+A.1 Statistics of Dataset
+Table A1 presents detailed statistics of the four
+datasets employed in the experiments, covering
+core attributes of documents, question-answer (QA)
+pairs, and evidence segments. Specifically, the ta-
+ble includes the number of documents (Numdoc),
+average sentences per document ( Sentd), aver-
+age words per document (Wordd), total QA pairs
+(Numqa), average words of questions (Wordq) and
+answers (Worda). The gray-highlighted rows fur-
+ther report the average word count ( Worde) and
+sentence count (Sente) of evidence segments for
+each dataset.
+Table A1: Statistics of dataset used in experiments.
+Dataset Qasper GutenQA OHRBench(T0) HiCBench(T1, T2)
+Numdoc 416 100 214 130
+Sentd 164 5,373 886 298
+Wordd 4.2k 146.5k 26.8k 8.5k
+Numqa 1,372 3,000 4,702 (659, 541)
+Wordq 8.9 16.0 22.2 (31.0, 33.0)
+Worda 16.0 26.0 4.8 (130.1, 126.4)
+Worde 239.4 39.3 39.1 (561.5, 560.5)
+Sente 10.5 1.7 1.7 (20.5, 20.4)
+A.2 Combination with Late-Chunking
+In order to verify the complementarity of HiChunk
+with other optimization techniques, we supple-
+mented the combination of Late-Chunking with
+various chunking methods and conducted exper-
+iments on HiCBench. The experiment setting is
+consistent with (Günther et al., 2024), using jina-
+embeddings-v3(Sturua et al., 2024) as the embed-
+ding model. The results are presented in Table A2.
+Late-Chunking universally enhances the ERec
+and Fact-Cov metrics of various chunking meth-
+ods. Regardless of whether Late-Chunking is inte-
+grated, HC200+AM consistently delivers the best
+performance across all evaluated settings. This re-
+sult validates the flexibility of the HiChunk frame-
+work, whose design enables seamless integration
+with other RAG optimization techniques (e.g., Late-
+Chunking) to further boost end-to-end performance.
+Table A2: The performance of combining the
+Late-Chunking and different chunking methods on
+HiCBench(T1 andT2). The best result is inbold, and
+the sub-optimal result is in underlined
+Methods w/o Late-Chunkingw/ Late-Chunking
+ERec Rouge Fact-CovERec Rouge Fact-Cov
+C200 75.59 34.19 46.71 78.04 34.33 49.12
+SC 73.07 34.17 45.60 78.07 34.16 48.45
+LC 77.89 34.84 49.16 79.9335.16 50.65
+HC200 78.1334.93 48.03 79.29 34.84 49.77
+HC200+AM80.87 36.34 51.49 81.20 36.00 52.71
+A.3 Sensitivity Analysis on Thresholdθ ∗ of
+Cond2
+The physical meaning ofθ∗ inCond2 is the min-
+imum ratio of the total length of child nodes to
+the parent node length (controlling merging gran-
+ularity). In order to verify the robustness of the
+Auto-Merge algorithm. We conduct the experiment
+by fixingθ from 0.0 to 1.0 (with an interval of 0.1)
+to test performance changes on three datasets. We
+use Qwen3-8B as generator model. The results are
+as Figure A1.
+When θ ranges from 0.1 to 0.6, HiCBench’s
+ERec remains above 80.05% and OHRBench’s
+Rouge remains above 49.89%, indicating that the
+algorithm is robust to threshold variations; As θ
+increases, the performance of evidence-dense tasks
+decreases (ERec drops to 78.08% atθ=1.0), while
+the performance of evidence-sparse tasks improves
+whenθ >0.5, reflecting the granularity demand
+differences between the two types of tasks; The
+adaptive thresholdθ∗ achieves cross-task balance
+through dynamic adjustment: it maintains high evi-
+dence recall on HiCBench (80.66%) while achiev-
+ing the optimal Score (45.00) on LongBench and
+Rouge (50.00) on OHRBench. This proves that
+it can adapt to different tasks without manual pa-
+rameter tuning, with better robustness than fixed
+thresholds.
+A.4 Evidence Recall under Different Token
+Budget
+In this section, we further present the curve of ev-
+idence recall metric at different retrieval context
+29749
+
+=== PDF PAGE 13 ===
+
+Figure A1: Performance changes across different θ on HiCBench, LongBench, and OHRBench. Dashed line
+represents the result of the adaptiveθ ∗.
+2k 2.5k 3k 3.5k 4k
+55
+60
+65
+70
+75
+80
+Evidence Recall
+Llama3.1-8b
+FC200
+SC
+LC
+HC200
+HC200+AM
+2k 2.5k 3k 3.5k 4k
+55
+60
+65
+70
+75
+80
+Qwen3-8b/32b
+Figure A2: Evidence recall metric across different token budget on HiCBench(T1).
+length settings (from 2k to 4k). The results are
+shown in Figure A2. Compared with other chunk-
+ing methods, the HC200+AM method always main-
+tains the best performance.
+A.5 Time Cost for Chunking
+As document chunking is essential for RAG sys-
+tems, it must meet specific timeliness requirements.
+In this section, we analyze the time costs associ-
+ated with different semantic-based chunking meth-
+ods, as presented in Table A3. Although the SC
+method exhibits superior real-time performance,
+it consistently falls short in quality across various
+datasets compared to other baselines. However,
+the LC method demonstrates reasonably good per-
+formance, but its chunking speed is considerably
+slower than other semantic-based methods, limiting
+its applicability within RAG systems. In contrast,
+the HC method achieves the highest chunking qual-
+ity among all baseline methods while maintaining
+an acceptable time cost, making it well-suited for
+implementation in real scenarios.
+Table A3: The average time cost on chunking docu-
+ments.
+DatasetAvg. Word SC LC HCTime(s) ChunksTime(s) ChunksTime(s) Chunks
+Qasper 4,166 0.4867 43.835.4991 18.321.4993 15.08Gov-report13,1531.3219 114.7215.4321 40.894.3382 29.79OHRBench26,8083.0943 249.1437.3935 89.6814.5776 92.23GutenQA146,50716.5028 1,453.00132.4900 393.5260.1921 232.85HiCBench8,519 1.0169 80.1213.4414 41.485.7506 51.35
+A.6 HiCBench Annotation
+The HiCBench dataset is derived from OHRBench,
+including documents in fields like Academic, Fi-
+nance, and Administration. Documents with over
+4,000 words were chosen as the initial corpus.
+Annotators read and comprehended the semantic
+structure of each document, then annotated its hi-
+erarchical structure. Following the same format
+as HiChunk training, they marked the positions
+of chunking points at different levels. The key
+criterion was "semantic independence" — ensur-
+ing each segmented unit could express a complete
+meaning on its own. Hierarchy levels were de-
+termined by identifying subordinate relationships.
+Each document was annotated at least twice. Only
+annotations with over 80% agreement on chunk-
+ing point positions were retained to ensure data
+consistency.
+A.7 Prompts Used
+29750
+
+=== PDF PAGE 14 ===
+
+Listing A1: Prompt for segment summarization.
+** Task :**
+You are tasked with analyzing the provided document sections and their hierarchical
+structure . Your goal is to generate a concise and informative paragraph
+describing the content of each section and subsection .
+** Instructions :**
+1. Each section or subsection is identified by a header in the format`=== SECTION
+xxx ===`( for example ,`=== SECTION 1===`,`=== SECTION 2.1===`, etc .) .
+2. For every section and subsection , write a brief , clear , and informative
+paragraph summarizing its content . Do not omit any section or subsection .
+3. Present your output as a JSON object with the following structure :
+```json
+{
+" SECTION 1": " description of section 1" ,
+" SECTION 1.1": " description of section 1.1" ,
+...
+" SECTION n . m ": " description of section n . m "
+}
+```
+4. Ensure that each key in the JSON object matches the exact section identifier
+( e . g . ,`" SECTION 2.1.3"`) , and do not include any sections or subsections that
+are not present in the provided document fragment .
+5. Do not add any commentary or explanation outside the JSON object .
+** Document Fragment :**
+Listing A2: Prompt for QA cunstruction.
+You are provided with a document that includes a detailed structure of sections and
+subsections , along with descriptions for each . Additionally , complete contents
+are provided for a few selected sections . Your task is to create a question and
+answer pair that effectively captures the essence of the selected sections .
+Finally , you need to extract the facts which are mentioned in the answer .
+< Type of Generated Q & A Task : Evidence - dense Dependent Understanding task >
+Understanding task means that , the generated question - answering pairs that require
+the responser to extract information from documents . The answer should be able
+to find directly in the documents without any reasoning .
+Evidence - dense dependent means that the facts about generated question are wildly
+distributed across all parts of the retrieved sections .
+< Criteria >
+- The question MUST be detailed and be based explicitly on information in the
+document .
+- The question MUST include at least one entity .
+- Question must not contain any ambiguous references , such as'he','she','it',
+'the report','the paper', and'the document'. You MUST use their complete
+names .
+- The context sentence the question is based on MUST include the name of the
+entity . For example , an unacceptable context is " He won a bronze medal in the 4
+* 100 m relay ". An acceptable context is " Nils Sandstrom was a Swedish sprinter
+who competed at the 1920 Summer Olympics ."
+- ** THE MOST IMPORTANT : Evidence - dense dependency ** , Questions must require
+understanding of ENTIRE selected sections . Never base Q & A on isolated few
+sentences . For example , a question comply the ** Evidence - dense dependency **
+criteria means that the facts about this question should be wildly distributed
+across all parts of the retrieved sections .
+< Output Format >
+Your response should be structured as follows :
+```json
+{{
+" question ": " Your generated question here " ,
+" answer ": " Your generated answer here "
+}}
+```
+< Document Structure and Description >
+29751
+
+=== PDF PAGE 15 ===
+
+{ s e c t i o n _ d e s c r i p t i o n }
+< Retrieved Section and Content >
+{ section_content }
+Listing A3: Prompt for evidence retrieval.
+** Task :**
+Analyze the relationship between context sentences and answer sentences .
+** Instructions :**
+1. You are given :
+- A context fragment , with each sentence numbered as follows :`[ serial number ]:
+context sentence content`
+- A question and its corresponding answer , with each answer sentence numbered
+as follows :`< serial number >: answer sentence content`
+2. For each sentence in the answer , identify which sentence ( s ) from the context
+provide the information used to construct that answer sentence .
+3. Present your findings in the following JSON format :
+```json
+{{
+" < answer_sentence_id_1 >": "[ c o n t e x t _ s e n t e n c e _ i d _ 1 ] , ... ,
+[ c o n t e x t _ s e n t e n c e _ i d _ n ]" ,
+" < answer_sentence_id_2 >": "[ c o n t e x t _ s e n t e n c e _ i d _ 1 ] , ... ,
+[ c o n t e x t _ s e n t e n c e _ i d _ m ]" ,
+...
+" < answer_sentence_id_i >": "[ c o n t e x t _ s e n t e n c e _ i d _ 1 ] , ... ,
+[ c o n t e x t _ s e n t e n c e _ i d _ j ]"
+}}
+```
+** Notes :**
+- Only include answer sentences that have supporting evidence in the context .
+- If an answer sentence does not have a source in the context , do not include it in
+the JSON output .
+- Use only the serial numbers ( not the full sentences ) for both context and answer
+sentences in your JSON output .
+- If multiple context sentences support an answer sentence , list all relevant
+context sentence numbers , separated by commas .
+** Context Sentences :**
+{ c o n t e x t _ s e n t e n c e _ l i s t }
+** Question :**
+{ question }
+** Answer Sentences :**
+{ a n s w e r _ s e n t e n c e _ l i s t }
+Listing A4: Prompt for model training.
+You are an assistant good at reading and formatting documents , and you are also
+skilled at distinguishing the semantic and logical relationships of sentences
+between document context . The following is a text that has already been divided
+into sentences . Each line is formatted as : "{ line number } @ { sentence
+content }". You need to segment this text based on semantics and format . There
+are multiple levels of granularity for segmentation , the higher level number
+means the finer granularity of the segmentation . Please ensure that each Level
+One segment is semantically complete after segmentation . A Level One segment
+may contain multiple Level Two segments , and so on . Please incrementally output
+the starting line numbers of each level of segments , and determine the level of
+the segment , as well as whether the content of the sentence at the starting
+line number can be used as the title of the segment . Finally , output a list
+format result , where each element is in the format of : "{ line number } , { segment
+level } , { be a title ?}".
+>>> Input text :
+29752
+
+=== PDF PAGE 16 ===
+
+Algorithm 1:iterative inference
+input :DocumentD, Input lengthL
+output :Global chunk pointsGCP 1:k
+1S[1 :N]←SentTokenize(D);
+2a←1;
+3b←argmax ˆb(S[a: ˆb]≤L);
+4res_lines←None;
+5GCP 1:k←[]∗k;
+6while1≤a<b≤Ndo
+7LCP 1:k←HiChunk(S[a:b],res_lines);
+8GCP 1:k←Merge(GCP 1:k,LCP 1:k);
+9iflen(LCP 1)≥2then
+10a←LCP 1[−1];
+11res_lines←None;
+12else
+13a←b;
+14res_lines←ResLines(GCP 1:k);
+15b←argmax ˆb(S[a: ˆb]≤L);
+16returnGCP 1:k
+Algorithm 2:retrieval algorithm
+input :Token budgetT, ChunksC [1:M], Queryq
+output :Retrieval contextctx
+1C sorted
+[1:M] ←Sorted(C [1:M],q);
+2N←[],T used←0;
+3fori←1toMdo
+4N←N+C sorted
+[i] ;
+5ctx,T used←Context(N);
+6p←parent(C sorted
+[i] );
+7whileCond [1,2,3] do
+8ifT used≥Tthen
+9break
+10N←Merge(N,p);
+11ctx,T used←Context(N);
+12p←parent(p);
+13ifT used≥Tthen
+14break
+15returnctx[:T]
+29753

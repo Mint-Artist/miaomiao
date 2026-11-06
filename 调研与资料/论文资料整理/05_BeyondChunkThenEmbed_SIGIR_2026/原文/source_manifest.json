@@ -1,0 +1,22 @@
+{
+  "title": "Beyond Chunk-Then-Embed: A Comprehensive Taxonomy and Evaluation of Document Chunking Strategies for Information Retrieval",
+  "authors": [
+    "Yongjie Zhou",
+    "Shuai Wang",
+    "Bevan Koopman",
+    "Guido Zuccon"
+  ],
+  "source_url": "https://arxiv.org/pdf/2602.16974v1",
+  "publication_url": "https://arxiv.org/abs/2602.16974",
+  "sigir_doi": "https://doi.org/10.1145/3805712.3808575",
+  "license": "CC BY-SA 4.0 (per PDF metadata)",
+  "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "retrieved_at": "2026-09-20T09:22:54+00:00",
+  "sha256": "99f6a743deb57ae2d835afe64847b49f6e72e0d9a725d19f6dfd409e83e148b4",
+  "bytes": 1931546,
+  "pages": 16,
+  "deliverables": {
+    "全文中文翻译": "全文中文翻译.md",
+    "论文解读报告": "论文解读报告.md"
+  }
+}

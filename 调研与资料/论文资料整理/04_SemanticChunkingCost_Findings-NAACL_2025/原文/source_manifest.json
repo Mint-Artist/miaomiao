@@ -1,0 +1,15 @@
+{
+  "title": "Is Semantic Chunking Worth the Computational Cost?",
+  "authors": [
+    "Renyi Qu",
+    "Ruixuan Tu",
+    "Forrest Sheng Bao"
+  ],
+  "source_url": "https://aclanthology.org/2025.findings-naacl.114.pdf",
+  "publication_url": "https://aclanthology.org/2025.findings-naacl.114/",
+  "license": "CC BY 4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "retrieved_at": "2026-09-20T07:09:14.865871+00:00",
+  "sha256": "6e6b45b3d08b08f514df36544bd15564dc9153e56d0313a811f83246764e8657",
+  "bytes": 2005663
+}

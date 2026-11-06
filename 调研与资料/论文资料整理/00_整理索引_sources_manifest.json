@@ -1,0 +1,66 @@
+[
+ {
+  "id": "01_HtmlRAG",
+  "source_url": "https://arxiv.org/pdf/2411.02959v2",
+  "local_source": "chunk_research_2026-09-20/papers/P02.pdf",
+  "pages": 14,
+  "sha256": "4cc06b7026d96620b1fd31ce509de5a7c7b2fd81d10e86264b54bf5bdd131899",
+  "license": "CC BY 4.0",
+  "copied_on": "2026-09-21",
+  "deliverables": {
+   "translation": "01_HtmlRAG/全文中文翻译.md",
+   "interpretation": "01_HtmlRAG/论文解读报告.md",
+   "translation_html": "01_HtmlRAG/全文中文翻译.html",
+   "interpretation_html": "01_HtmlRAG/论文解读报告.html"
+  },
+  "pdf_hash_match": true
+ },
+ {
+  "id": "02_AutoChunker",
+  "source_url": "https://aclanthology.org/2025.acl-industry.69.pdf",
+  "local_source": "chunk_research_2026-09-20/experiment_plan/review_sources/AutoChunker_ACL2025.pdf",
+  "pages": 13,
+  "sha256": "47efe2845a39dfdb6feddbb916a4f454c43eb17dacf3c0e9f16c3542c3571947",
+  "license": "CC BY 4.0",
+  "copied_on": "2026-09-21",
+  "deliverables": {
+   "translation": "02_AutoChunker/全文中文翻译.md",
+   "interpretation": "02_AutoChunker/论文解读报告.md",
+   "translation_html": "02_AutoChunker/全文中文翻译.html",
+   "interpretation_html": "02_AutoChunker/论文解读报告.html"
+  },
+  "pdf_hash_match": true
+ },
+ {
+  "id": "03_HiChunk",
+  "source_url": "https://aclanthology.org/2026.acl-long.1372.pdf",
+  "local_source": "chunk_research_2026-09-20/experiment_plan/review_sources/HiChunk_ACL2026.pdf",
+  "pages": 16,
+  "sha256": "7deb3aeb5d1d822cc9fa40edbf1a8d9f509ad6231e810574de547990d8efd710",
+  "license": "CC BY 4.0",
+  "copied_on": "2026-09-21",
+  "deliverables": {
+   "translation": "03_HiChunk/全文中文翻译.md",
+   "interpretation": "03_HiChunk/论文解读报告.md",
+   "translation_html": "03_HiChunk/全文中文翻译.html",
+   "interpretation_html": "03_HiChunk/论文解读报告.html"
+  },
+  "pdf_hash_match": true
+ },
+ {
+  "id": "04_SemanticChunkingCost",
+  "source_url": "https://aclanthology.org/2025.findings-naacl.114.pdf",
+  "local_source": "paper_translation_naacl2025_114/2025.findings-naacl.114.pdf",
+  "pages": 23,
+  "sha256": "6e6b45b3d08b08f514df36544bd15564dc9153e56d0313a811f83246764e8657",
+  "license": "CC BY 4.0",
+  "copied_on": "2026-09-21",
+  "deliverables": {
+   "translation": "04_SemanticChunkingCost/全文中文翻译.md",
+   "interpretation": "04_SemanticChunkingCost/论文解读报告.md",
+   "translation_html": "04_SemanticChunkingCost/全文中文翻译.html",
+   "interpretation_html": "04_SemanticChunkingCost/论文解读报告.html"
+  },
+  "pdf_hash_match": true
+ }
+]

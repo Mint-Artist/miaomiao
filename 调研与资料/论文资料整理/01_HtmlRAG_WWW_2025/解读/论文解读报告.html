@@ -1,0 +1,120 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>《HtmlRAG(WWW 2025)》解读报告</title><style>
+:root{color-scheme:light;--ink:#182b3b;--muted:#526879;--line:#d8e2e8;--accent:#196e86}
+*{box-sizing:border-box}body{margin:0;background:#f2f5f7;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.85;font-size:17px}main{max-width:1080px;margin:32px auto;background:white;padding:52px 66px;box-shadow:0 4px 26px #1225360b;border-radius:12px}h1{font-size:2em;line-height:1.35;margin:0 0 28px}h2{border-top:1px solid var(--line);padding-top:28px;margin-top:48px;font-size:1.5em}h3{font-size:1.2em;margin-top:32px}p{margin:16px 0}a{color:var(--accent);text-underline-offset:3px}blockquote{margin:22px 0;padding:2px 22px;border-left:4px solid #8bb6c4;background:#f4f8fa;color:var(--muted);font-size:.93em}code{background:#f0f4f6;padding:2px 5px;border-radius:4px;font-size:.88em;overflow-wrap:anywhere}pre{background:#f0f4f6;padding:14px 18px;border-radius:8px;overflow-x:auto;font-size:.85em}pre code{background:none;padding:0}table{border-collapse:collapse;width:100%;font-size:.82em;margin:22px 0}th,td{padding:7px 9px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}th{background:#eaf2f5;font-weight:600}tbody tr:nth-child(even){background:#f8fafb}img{display:block;max-width:100%;height:auto;margin:24px auto}u{text-decoration:underline;text-decoration-color:#b3563d;text-underline-offset:2px}.equation,.katx{font-family:Georgia,serif;text-align:center;font-size:1.1em;padding:16px;overflow-x:auto;background:#f8fafb}li{margin:6px 0}hr{border:0;border-top:1px solid var(--line);margin:36px 0}
+@media(max-width:720px){body{font-size:16px}main{margin:0;border-radius:0;padding:28px 18px}th,td{padding:6px 4px;font-size:.9em}h1{font-size:1.65em}}
+@media print{body{background:white;font-size:11pt}main{max-width:none;margin:0;padding:0;box-shadow:none}a{color:inherit;text-decoration:none}h2,h3{break-after:avoid}tr,img,blockquote{break-inside:avoid}table{font-size:8pt}}
+</style></head><body><main><p><a href="全文中文翻译.html">← 全文中文翻译</a></p><nav><b>目录</b><ul><li style="margin-left:0px"><a href="#1-对你们最重要的结论">1. 对你们最重要的结论</a></li><li style="margin-left:0px"><a href="#2-论文实际做了什么">2. 论文实际做了什么</a></li><li style="margin-left:0px"><a href="#3-结果有多强">3. 结果有多强</a></li><li style="margin-left:14px"><a href="#3-1-信息保留本身的收益-与你们最相关">3.1 信息保留本身的收益(与你们最相关)</a></li><li style="margin-left:14px"><a href="#3-2-4K-短上下文下的完整流水线">3.2 4K 短上下文下的完整流水线</a></li><li style="margin-left:14px"><a href="#3-3-消融与成本">3.3 消融与成本</a></li><li style="margin-left:0px"><a href="#4-证据边界-不能外推什么">4. 证据边界:不能外推什么</a></li><li style="margin-left:0px"><a href="#5-对你们实验方案的映射">5. 对你们实验方案的映射</a></li><li style="margin-left:0px"><a href="#6-落地建议-综合判断-非论文结论">6. 落地建议(综合判断,非论文结论)</a></li></ul></nav><h1>《HtmlRAG》解读报告</h1>
+<p>研究对象:Jiejun Tan、Zhicheng Dou、Wen Wang、Mang Wang、Weipeng Chen、Ji-Rong Wen,<em>HtmlRAG: HTML is Better Than Plain Text for Modeling Retrieved Knowledge in RAG Systems</em>,WWW 2025(DOI:10.1145/3696410.3714546;arXiv:2411.02959v2)。中国人民大学与百川智能。</p>
+<p>报告日期:2026-09-21。依据 arXiv v2 全文 14 页;<a href="%E5%85%A8%E6%96%87%E4%B8%AD%E6%96%87%E7%BF%BB%E8%AF%91.md">全文中文翻译</a>同目录。区分&quot;作者观察&quot;&quot;证据边界&quot;&quot;对你们的工程建议&quot;。</p>
+<h2>1. 对你们最重要的结论</h2>
+<p><strong>这篇论文是&quot;EC 保留结构&quot;需求最直接的可引用证据:它证明 HTML 中的标题、表格、代码、链接等结构与语义信息在纯文本化过程中不可逆丢失,而且即使不做任何查询相关剪枝,仅清理后的 HTML 在长上下文下就能达到或超过纯文本/Markdown 的回答效果。但必须看清边界:HtmlRAG 是&quot;检索之后的在线知识处理&quot;,不是离线索引切分方案,不能拿它证明某种离线 chunk 边界或长度最优。</strong></p>
+<p>对你们链路的三个具体可用点:</p>
+<ol>
+<li><strong>支持 EC 契约的&quot;信息保留&quot;论据</strong>(R01–R07):论文图 1 的 PyTorch 文档例子(表格行列关系、<code>&lt;code&gt;</code>/<code>&lt;a&gt;</code> 标签语义在纯文本中丢失)可直接用于跨部门评审;附录 A 明确建议把格式转换放到清理与剪枝<strong>之后</strong>,这与你们&quot;EC 输出可解析精简 HTML、下游再做预算装箱&quot;的分工一致。</li>
+<li><strong>在线证据组织层的方法参照</strong>:结构块树 + 查询相关剪枝,是你们第三、四轮&quot;父段扩展/查询相关组织&quot;的同族方法;其&quot;清理→粗剪→细剪&quot;的分层成本控制(1.6M→135K→8K→4K tokens)是工程上可借鉴的漏斗。</li>
+<li><strong>块树粒度实验支持你们的两阶段思路</strong>:64/128/256/512 words 的粒度比较显示生成式模型适应更细粒度、embedding 剪枝需要较粗块——与&quot;结构作用域内装箱、超长再下钻&quot;的设计互补。</li>
+</ol>
+<h2>2. 论文实际做了什么</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>设置</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>知识表示</td>
+<td>检索到的 HTML 直接作为 RAG 输入格式</td>
+<td>核心主张:HTML &gt; 纯文本/Markdown</td>
+</tr>
+<tr>
+<td>清理</td>
+<td>删 CSS/JS/注释/冗余属性,合并单一嵌套</td>
+<td>删除 94.07% token(纯文本化删 96.71%,Markdown 删 90.32%)</td>
+</tr>
+<tr>
+<td>块树</td>
+<td>DOM 合并为结构块,粒度由 maxWords 控制</td>
+<td>embedding 阶段 256 words,生成阶段 128 words</td>
+</tr>
+<tr>
+<td>粗剪</td>
+<td>BGE-Large-EN 算块-查询相似度,贪心删低分块</td>
+<td>轻量;小块 embedding 含义模糊,故用于粗粒度</td>
+</tr>
+<tr>
+<td>细剪</td>
+<td>微调 Phi-3.5-Mini(原文标 3B/3.8B)按&quot;块路径生成概率&quot;评分</td>
+<td>树形推理 + 跳过唯一子节点(&gt;45% 可跳过),6.15ms</td>
+</tr>
+<tr>
+<td>评测</td>
+<td>6 个 QA 数据集 × 各 400 问;Bing 检索真实网页</td>
+<td>4K(表 1)与 128K(表 2)两种上下文;Llama-3.1-8B/70B</td>
+</tr>
+</tbody>
+</table>
+<p>来源:§3–§4。注意:<strong>检索器本身被跳过</strong>——实验假设检索已完成,比较的是送入模型的知识表示与压缩方式。</p>
+<h2>3. 结果有多强</h2>
+<h3>3.1 信息保留本身的收益(与你们最相关)</h3>
+<p>表 2(70B、128K、不剪枝):HtmlRAG w/o Prune 在 8/10 个指标列上达到或超过 Plain Text 与 Markdown(如 HotpotQA EM 42.25 vs 41.00/39.00;TriviaQA Hit@1 95.00 vs 93.50/92.00)。表 5 的参考文本 EM 显示三种&quot;无损&quot;转换接近(纯文本因保留内容最多而略高),端到端却相近或更好——<strong>结构信息的收益抵消了标签占用 token 的成本</strong>。</p>
+<h3>3.2 4K 短上下文下的完整流水线</h3>
+<p>表 1:HtmlRAG 在两个模型、多数指标上超过 BM25/BGE/E5-Mistral/LongLLMLingua/JinaAI Reader(如 8B ASQA Hit@1 71.75 vs BGE 68.50)。但译者注已指出反例:8B 下 MuSiQue EM(8.75 vs BGE 10.00)与 ELI5 两列落后——&quot;各指标均达到或超过&quot;的概述不成立,引用时应逐列核对。</p>
+<h3>3.3 消融与成本</h3>
+<p>表 3:去块树、去 embedding 剪枝、去生成式剪枝分别导致平均 1.5–6/、3.5–11.75/、1.5–7.5 个百分点的指标下降,三组件均必要。表 4:Prune-Gen 6.15ms、Prune-Embed 30.8ms,远低于回答模型 915ms;<strong>译者注发现表 4 延迟数字与正文&quot;生成阶段略高于基线&quot;的叙述不能对应</strong>,引用成本结论时以表格为准并注明。</p>
+<h2>4. 证据边界:不能外推什么</h2>
+<ol>
+<li><strong>不是离线切分实验</strong>。剪枝依赖具体查询,发生在检索之后;它不回答&quot;离线索引块怎么切、多长&quot;。你们 B2 的预期收益不能引用本文。</li>
+<li><strong>评测跳过检索器</strong>。无召回、无排序指标;无法判断 HTML 表示对索引/召回的影响。</li>
+<li><strong>英文网页 + Bing + 英文 QA 基准</strong>;生成式剪枝器在 2,635 个自动构造样本上微调(32×A800,附录 B),训练成本与中文迁移均未验证。</li>
+<li><strong>长答案/无答案场景未覆盖</strong>;ELI5 上收益不稳定。</li>
+<li>预印本痕迹:模型规模标注(3B/3.8B、1B/1.5B)与表 7 部分表头不一致,表 4 与正文叙述不一致(译者注已逐条记录)。</li>
+</ol>
+<h2>5. 对你们实验方案的映射</h2>
+<table>
+<thead>
+<tr>
+<th>你们的组件</th>
+<th>本文证据</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EC 结构保留(R01–R07)</td>
+<td>纯文本化丢失结构语义(图 1、§1);附录 A 流程建议</td>
+<td>引用为需求依据;华为案例可类比其图 1</td>
+</tr>
+<tr>
+<td>B2 结构作用域切分</td>
+<td>无直接证据(本文是在线剪枝)</td>
+<td>不引用为 B2 证据;B2 仍靠自证(P14 也无 HTML)</td>
+</tr>
+<tr>
+<td>第三轮父段/邻块扩展</td>
+<td>块树父子结构 + 查询相关扩展的在线版本</td>
+<td>参照其&quot;以块为单位贪心保留&quot;的实现思路</td>
+</tr>
+<tr>
+<td>双轨预算报告</td>
+<td>4K/128K 两档比较;token 预算明确</td>
+<td>维持;其 256/128 words 粒度可作超参参照</td>
+</tr>
+<tr>
+<td>在线证据筛选(第四轮)</td>
+<td>两阶段剪枝漏斗 1.6M→4K</td>
+<td>若做在线层,可复用&quot;粗 embedding + 细生成&quot;的分层设计</td>
+</tr>
+</tbody>
+</table>
+<p>另外一个可借鉴的评测思路:表 5 用&quot;参考文本的答案 EM&quot;衡量压缩过程的信息损失,与你们的 EvidenceCoverage 同族;它可以在不跑端到端的情况下快速对比&quot;正文提取+切分&quot;链路的信息保真。</p>
+<h2>6. 落地建议(综合判断,非论文结论)</h2>
+<ol>
+<li>EC 评审材料中,用本文图 1 + 附录 A 支撑&quot;先结构保留、后格式转换&quot;的顺序;不要引用&quot;HtmlRAG 证明了结构切分最优&quot;这类超出论文范围的说法。</li>
+<li>你们的离线主线(B0–B4)不变;把本文放到&quot;在线证据组织&quot;层的方法池,等第三/四轮再考虑。</li>
+<li>若上游暂时无法提供结构化输出,本文的&quot;清理规则&quot;(删 CSS/JS/注释、合并单一嵌套)可作为 EC 最小改动的第一版:它不需要模型,收益已由表 2 部分佐证。</li>
+<li>引用数字时避开三处已知不一致(表 1 概述、表 4 延迟、表 7 规模),以翻译中译者注为准。</li>
+</ol>
+</main></body></html>

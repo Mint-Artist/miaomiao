@@ -1,0 +1,1437 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>超越&quot;先切分后嵌入&quot;——全文中文翻译</title><style>
+:root{color-scheme:light;--ink:#182b3b;--muted:#526879;--line:#d8e2e8;--accent:#196e86}
+*{box-sizing:border-box}body{margin:0;background:#f2f5f7;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.85;font-size:17px}main{max-width:1080px;margin:32px auto;background:white;padding:52px 66px;box-shadow:0 4px 26px #1225360b;border-radius:12px}h1{font-size:2em;line-height:1.35;margin:0 0 28px}h2{border-top:1px solid var(--line);padding-top:28px;margin-top:48px;font-size:1.5em}h3{font-size:1.2em;margin-top:32px}h4,h5{font-size:1em;margin-top:26px}p{margin:16px 0}a{color:var(--accent);text-underline-offset:3px}blockquote{margin:22px 0;padding:2px 22px;border-left:4px solid #8bb6c4;background:#f4f8fa;color:var(--muted);font-size:.93em}code{background:#f0f4f6;padding:2px 5px;border-radius:4px;font-size:.88em;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:.82em;margin:22px 0}th,td{padding:7px 9px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}th{background:#eaf2f5;font-weight:600}tbody tr:nth-child(even){background:#f8fafb}img{display:block;max-width:100%;height:auto;margin:24px auto}u{text-decoration:underline;text-decoration-color:#b3563d;text-underline-offset:2px}.equation{font-family:Georgia,"Times New Roman",serif;text-align:center;font-size:1.12em;padding:22px 12px;overflow-x:auto;background:#f8fafb}.equation span{margin-left:15px}li{margin:6px 0}hr{border:0;border-top:1px solid var(--line);margin:36px 0}
+@media(max-width:720px){body{font-size:16px}main{margin:0;border-radius:0;padding:28px 18px}th,td{padding:6px 4px;font-size:.9em}h1{font-size:1.65em}}
+@media print{body{background:white;font-size:11pt}main{max-width:none;margin:0;padding:0;box-shadow:none}a{color:inherit;text-decoration:none}h2,h3,h4{break-after:avoid}tr,img,blockquote{break-inside:avoid}img{max-height:240mm}table{font-size:8pt}}
+</style></head>
+<body><main><p class="badge"><a href="论文解读报告.html">← 返回论文解读报告</a></p><nav><b>目录</b><ul><li style="margin-left:0px"><a href="#摘要">摘要</a></li><li style="margin-left:0px"><a href="#1-引言">1 引言</a></li><li style="margin-left:0px"><a href="#2-文档切分策略">2 文档切分策略</a></li><li style="margin-left:14px"><a href="#图-1-统一评测框架">图 1:统一评测框架</a></li><li style="margin-left:14px"><a href="#2-1-分割方法分类">2.1 分割方法分类</a></li><li style="margin-left:14px"><a href="#2-2-嵌入-切分顺序">2.2 嵌入-切分顺序</a></li><li style="margin-left:14px"><a href="#2-3-检索任务">2.3 检索任务</a></li><li style="margin-left:0px"><a href="#3-实验设置">3 实验设置</a></li><li style="margin-left:14px"><a href="#3-1-分割方法">3.1 分割方法</a></li><li style="margin-left:14px"><a href="#3-2-嵌入模型">3.2 嵌入模型</a></li><li style="margin-left:14px"><a href="#3-3-数据集与评测">3.3 数据集与评测</a></li><li style="margin-left:0px"><a href="#4-结果">4 结果</a></li><li style="margin-left:14px"><a href="#4-1-可复现性分析">4.1 可复现性分析</a></li><li style="margin-left:14px"><a href="#4-2-RQ1-分割方法对语料库内检索的影响">4.2 RQ1:分割方法对语料库内检索的影响</a></li><li style="margin-left:14px"><a href="#4-3-RQ2-分割方法能否跨检索任务泛化">4.3 RQ2:分割方法能否跨检索任务泛化?</a></li><li style="margin-left:14px"><a href="#4-4-RQ3-上下文化切分的效果">4.4 RQ3:上下文化切分的效果</a></li><li style="margin-left:14px"><a href="#4-5-RQ4-块大小的影响">4.5 RQ4:块大小的影响</a></li><li style="margin-left:0px"><a href="#5-结论">5 结论</a></li><li style="margin-left:0px"><a href="#参考文献">参考文献</a></li><li style="margin-left:0px"><a href="#脚注">脚注</a></li></ul></nav><h1>超越&quot;先切分后嵌入&quot;:面向信息检索的文档切分策略综合分类与评测</h1>
+<p><em>Beyond Chunk-Then-Embed: A Comprehensive Taxonomy and Evaluation of Document Chunking Strategies for Information Retrieval</em> 全文中文翻译</p>
+<ul>
+<li>作者:Yongjie Zhou(昆士兰大学)¹*、Shuai Wang(昆士兰大学)¹*†、Bevan Koopman(昆士兰大学/CSIRO)¹²、Guido Zuccon(昆士兰大学/Google)¹³。*共同贡献,†通讯作者。</li>
+<li>单位:¹ 昆士兰大学(澳大利亚);² 澳大利亚联邦科学与工业研究组织(CSIRO);³ Google。</li>
+<li>出处:arXiv:2602.16974v1 [cs.IR],2026 年 2 月 19 日。正式发表版收录于 SIGIR 2026(<a href="https://dl.acm.org/doi/10.1145/3805712.3808575">ACM DOI:10.1145/3805712.3808575</a>);本翻译依据 arXiv v1 预印本 PDF,该版本中代码与基准链接为匿名评审占位(&quot;Anonymoused for review&quot;)。</li>
+<li>授权:原文依据 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 发布(见 PDF 元数据)。本译文为 AI 辅助翻译的演绎作品,依同一协议共享;非作者或 SIGIR 官方译文,原作者未为本译文背书。</li>
+<li>翻译日期:2026-09-20。范围:PDF 全部 16 页,含正文 5 节、14 条参考文献、5 张表、2 幅图及全部脚注。</li>
+</ul>
+<blockquote>
+<p><strong>译文说明</strong>:保留原章节、公式、图表编号。&quot;chunk&quot;统一译为&quot;文本块&quot;,&quot;chunking&quot;译为&quot;切分&quot;,&quot;segmentation method&quot;译为&quot;分割方法&quot;。两条嵌入路线记号照原文:<strong>Pre-C</strong>(pre-embedding chunking,嵌入前切分)与 <strong>Con-C</strong>(contextualized chunking,上下文化切分,即 late chunking/后期切分)。任务轴:in-document retrieval 译&quot;文档内检索&quot;,in-corpus retrieval 译&quot;语料库内检索&quot;。表格数值按原文照录,不擅自订正;表 2 的粗体按表注&quot;Pre-C 与 Con-C 中较高者&quot;由数值比较标出,表 3/表 5 的粗体(每模型-数据集最优)与下划线(最差)按表注由列内最大/最小值标出,上标 ᵃ/ᵇ 为原文显著性标记(ᵃ=与最优差异显著,ᵇ=与最差差异显著,p&lt;0.05,配对 t 检验)。图 2 底行相关系数与正文叙述在原文中存在不一致,见对应译者注。所有&quot;译者注&quot;均为补充说明,不属于论文原文。</p>
+</blockquote>
+<h2>摘要</h2>
+<p>文档切分是稠密检索系统中关键的预处理步骤,但切分策略的设计空间仍缺乏系统理解。近期研究提出了多条并行路线:LLM 引导方法(如 DenseX 与 LumberChunker),以及上下文化策略(如 Late Chunking)——后者在分割之前生成嵌入以保留上下文信息。然而,这些方法各自独立出现,评测所用基准几乎不重叠,难以直接比较。</p>
+<p>本文复现了文档切分领域的先前研究,并提出一个统一既有策略的系统框架,沿两个关键维度展开:(1)分割方法,包括结构化方法(固定大小、句子、段落)以及语义感知与 LLM 引导方法;(2)嵌入范式,决定切分相对于嵌入的时机(嵌入前切分 vs. 上下文化切分)。我们的复现与扩展在先前工作确立的两种检索设定下评估这些方法:文档内检索(大海捞针)与语料库内检索(标准信息检索任务)。</p>
+<p>综合评测表明,最优切分策略依赖于任务:语料库内检索中,简单结构化方法优于 LLM 引导方法;而 LumberChunker 在文档内检索中表现最佳。上下文化切分提升语料库内效果,但损害文档内检索。我们还发现,块大小与文档内效果中等相关、与语料库内效果仅弱相关,说明分割方法之间的差异并非纯粹由块大小驱动。我们的代码与评测基准公开可得(评审期间匿名化)。</p>
+<h2>1 引言</h2>
+<p>稠密检索系统把查询和文档表示为低维向量,支撑从网页搜索引擎到检索增强生成(RAG)框架的各类应用 [Li et al.(2024), Zuccon et al.(2025), Rau et al.(2025)]。然而,嵌入模型的输入窗口大小固定,长文档必须被划分为较小的片段:这一过程称为文档切分(document chunking)。切分方法的选择显著影响检索效果:过小的文本块可能缺乏足够上下文来匹配相关查询;过大的文本块会用无关内容稀释相关信息;而把连贯的相关内容切分开的块,可能对下游任务高度有害。</p>
+<p>文档切分研究沿两个维度快速演进:分割方法,以及嵌入与切分的先后顺序。分割方法决定文档如何被划分为块;嵌入范式决定切分发生在嵌入之前还是之后(例如先切分再编码,或先编码再切分)。在分割方法上,结构化方法使用固定窗口或段落等语言学边界 [Karpukhin et al.(2020)];近期工作引入了语义感知方法,如基于命题的 DenseX 切分 [Chen et al.(2024)],以及 LLM 引导方法,如利用大语言模型识别篇章感知边界的 LumberChunker [Duarte et al.(2024)]。嵌入与切分的顺序有两种做法:一方面,传统的<strong>嵌入前切分</strong>先分割文档,再对每个块独立嵌入;另一方面,<strong>嵌入后切分</strong>(也称上下文化切分)[Günther et al.(2024)] 先用长上下文嵌入模型编码整篇文档(从而在各块表示中保留全局上下文),再对 token 嵌入做池化得到最终嵌入。</p>
+<p>尽管有上述研究,进展仍是碎片化的,因为这些方法各自在被隔离的条件下评测。例如,LumberChunker [Duarte et al.(2024)] 证明了相对命题切分(DenseX [Chen et al.(2024)])与传统固定大小分割更高的检索效果,但它只在文档内检索(在单篇长文档内定位相关信息)上、用单一商用嵌入模型(OpenAI text-embedding-ada-002)评测,既未涉及语料库内检索(在文档集合中找出相关文档),也未考虑上下文化切分的潜力。反过来,基于 Late Chunking [Günther et al.(2024)] 的嵌入后切分确立了上下文化切分的收益,但分析仅限于简单分割方法(固定大小、句子)与标准语料库内基准(BEIR),没有探索高级分割方法与上下文化切分的交互。这种缺乏统一性的状况,使得难以判断已报告的收益究竟来自切分策略本身,还是来自特定实验变量,如数据集构成或嵌入模型选择。</p>
+<p>为填补这些空白,我们开展一项可复现性研究,把先前工作统一到共同评测框架下,延续稠密检索领域可复现性研究的传统 [Wang and Zuccon(2023)]。我们首先复现 LumberChunker [Duarte et al.(2024)] 与 Late Chunking [Günther et al.(2024)] 的核心发现,以验证实现并建立基线。在此基础上,我们研究以下研究问题:</p>
+<p><strong>RQ1 不同分割方法在标准语料库内检索中表现如何?</strong> 我们在标准 BEIR 基准上,以嵌入前切分评估固定大小、句子、段落、语义与 LLM 引导等分割方法。</p>
+<p><strong>RQ2 分割方法能否跨检索任务泛化?</strong> 我们把同一批分割方法应用于文档内检索,检验在语料库内检索中观察到的相对优劣,在检索被限制在单篇文档内时是否仍然成立。</p>
+<p><strong>RQ3 上下文化切分是否在所有配置下提供一致改进?</strong> 我们把上下文化切分应用于 RQ1 的全部分割方法,并覆盖两种检索任务,判断它是否具有普适收益。</p>
+<p><strong>RQ4 块大小如何影响检索效果?</strong> 不同分割方法产生大小不一的块,先前工作未控制这一变量。这就引出一个直接的问题:效果差异反映的是分割质量,还是仅仅块大小?一个极端是,把整篇文档当作单个块,在文档内设定下必然命中(相关信息一定在块内),人为抬高效果。另一个极端是,非常大的块会缩小上下文化切分与嵌入前切分的差距,因为可纳入的周围上下文所剩无几;当块大小接近模型上下文窗口时尤其如此。我们考察块大小效应,以把这些伪影与真正的分割质量区分开。</p>
+<p>通过这些研究问题,我们:(1)确认先前发现可复现(第 4.1 节);(2)建立语料库内检索各分割方法的基线(第 4.2 节);(3)识别哪些分割方法能跨检索任务泛化(第 4.3 节);(4)评估上下文化切分是否带来普适改进(第 4.4 节);(5)考察观察到的改进有多大比例可归因于块大小(第 4.5 节)。</p>
+<h2>2 文档切分策略</h2>
+<p>文档切分把原始文本变换为稠密检索系统使用的可检索块。为系统比较种类繁多的现有方法,我们沿两个维度组织它们:(1)<strong>分割方法</strong>,定义文本边界如何识别;(2)<strong>嵌入-切分顺序</strong>,决定切分发生在嵌入之前还是之后。该框架为我们的实验提供结构化基础,也厘清了不同技术之间的关系。图 1 概述了本节涵盖的各项技术。</p>
+<h3>图 1:统一评测框架</h3>
+<p><img src="assets/figure1.png" alt="图1:统一的文档切分策略跨检索任务评测框架原图" /></p>
+<p><strong>图 1 图注译文</strong>:跨检索任务评测文档切分策略的统一框架。</p>
+<p>图内结构说明(译者依原图整理):该图是从左到右的流水线。左上角图例区分两条嵌入路线——绿色实线箭头为上下文化切分(Con-C),红色虚线箭头为嵌入前切分(Pre-C)。输入文档先经过分割方法层,分为两族:结构化方法(固定大小、句子、段落)与语义/LLM 引导方法(语义分割、命题、LumberChunker);分割产生的文本块进入嵌入模型层(需支持池化),最后面向两种检索任务:文档内检索(GutenQA)与语料库内检索(BEIR)。</p>
+<h3>2.1 分割方法分类</h3>
+<p>我们把分割方法分为两族:依赖文档显式版式的<strong>结构化方法</strong>,以及借助语言理解识别逻辑切分的<strong>语义感知方法</strong>。我们的分类合并了 LumberChunker 与 Late Chunking 两项研究的方法 [Duarte et al.(2024), Günther et al.(2024)]。¹</p>
+<h4>2.1.1 结构化方法</h4>
+<p>这类方法使用可观察的文本特征定义块边界。因计算高效、简单且确定性,在实践中被广泛采用。我们评估三种常见方法:</p>
+<ul>
+<li><strong>段落(Paragraph)</strong>:在换行符处切分文档并去除空块。它以零额外处理成本尊重作者预期的结构,对组织良好的文本(如新闻文章)往往有效。</li>
+<li><strong>固定大小(Fixed-size)</strong>:把文本切为恒定 token 长度的块(如 512 token),通常无重叠。虽然高度高效,但它可能任意切断连贯的句子或概念,潜在损害嵌入质量 [Karpukhin et al.(2020)]。</li>
+<li><strong>句子(Sentence)</strong>:使用基于正则表达式的分割器识别句子边界,通常每块组合多个句子。这样产生的块在粒度与上下文保留之间取得平衡,适合答案可能跨越多个句子的任务。</li>
+</ul>
+<h4>2.1.2 语义与 LLM 引导方法</h4>
+<p>这类方法借助模型分析文本含义,识别更自然的断点,目标是产生内部连贯、更利于检索的块。</p>
+<ul>
+<li><strong>语义(Semantic)</strong>:用嵌入计算相邻句子之间的语义相似度;当相似度低于预设阈值(提示主题转移)时插入边界 [Kamradt(5)]。这使分割能够适应文档的内容流转。</li>
+<li><strong>命题(Proposition)</strong>:用 LLM 把文本分解为原子事实或&quot;命题&quot; [Chen et al.(2024)]。每条命题作为独立块,形成高度特异的单元,适合事实型检索。但该方式显著增加块总数,且 LLM 推理带来高计算成本。</li>
+<li><strong>LumberChunker</strong>:直接提示 LLM 对文档分割,在检测到主题转移的段落之间插入断点 [Duarte et al.(2024)]。它善于捕捉篇章结构,但受限于 LLM 推理的时延与成本。</li>
+</ul>
+<p>值得注意的是,语义感知与 LLM 引导方法往往构建在结构化方法之上。例如,语义分割需要先做句子级处理,而命题方法与 LumberChunker 通常在已识别的段落上操作。</p>
+<h3>2.2 嵌入-切分顺序</h3>
+<p>框架的第二维是<strong>嵌入-切分顺序</strong>,定义切分与嵌入操作的先后。<strong>嵌入前切分</strong>是最常见的范式:先分割文档,再对每个块孤立嵌入。该方式简单且可扩展,但忽略了块边界之间可能存在的上下文信息。</p>
+<p>相反,<strong>上下文化切分</strong>(也称后期切分,late chunking)逆转这一顺序:长上下文嵌入模型先处理整篇文档,生成包含全局上下文的 token 级嵌入 [Günther et al.(2024), Rau et al.(2025)];随后把分割边界应用于这些感知上下文的表示,对每块的 token 嵌入做池化(如取平均)得到最终嵌入。该方式保留了跨块关系,但附加上下文可能降低同一文档内各块之间的可区分性。</p>
+<h3>2.3 检索任务</h3>
+<p>针对梳理先前工作时发现的可比性问题,我们在两种检索任务下评测切分策略:</p>
+<ul>
+<li><strong>文档内检索</strong>:常称&quot;大海捞针&quot;,要求在单篇长文档内定位特定信息,评测方法在狭窄范围内识别相关内容的能力。</li>
+<li><strong>语料库内检索</strong>:要求在大型集合中找出最相关的文档,如 BEIR 基准 [Thakur et al.(2021)],评测检索跨多个不同领域文档时的效果。</li>
+</ul>
+<p>通过在两种任务上、用一致的嵌入模型集合评测每种方法,本研究分离出切分策略本身对检索效果的影响。</p>
+<h2>3 实验设置</h2>
+<p>我们按第 2 节所述框架评测每种切分策略。下面详述实验中采用的具体实现、数据集与评测流程。</p>
+<h3>3.1 分割方法</h3>
+<p>我们在所有数据集上对每种分割方法使用一致的实现。</p>
+<p><strong>结构化方法</strong>方面:段落分割在换行符处切分文档并去除空块;固定大小分割把文档切成 256 token 的均匀块,无重叠;句子分割用基于正则的分割器识别句子边界,默认每块 5 句。所有结构化方法遵循 Late Chunking [Günther et al.(2024)] 确立的默认协议与超参数。</p>
+<p><strong>语义与 LLM 引导方法</strong>方面:语义分割计算相邻句子嵌入的余弦相似度,在相似度低于指定分位阈值(默认第 95 百分位)处插入分割边界。我们的实现使用 LlamaIndex 语义节点解析器²,配合 jina-embeddings-v2-small-en 模型,遵循 Late Chunking [Günther et al.(2024)]。命题分割用 LLM 把文本分解为原子事实单元(提示词细节见补充材料)。LumberChunker 分析较长的文本片段,为每个块识别最优断点。命题分割与 LumberChunker 均使用 Gemini-2.5-Flash。³ 所有 LLM 引导方法的生成温度设为 T = 0.0,以确保确定性与可复现输出。</p>
+<h3>3.2 嵌入模型</h3>
+<p>为考察不同分割方法与嵌入架构的交互,我们依据检索效果与架构兼容性选择四个嵌入模型。由于上下文化切分需要在池化之前访问 token 级表示,选择范围限于 MTEB 榜单上表现良好且采用均值池化的模型。我们评估:</p>
+<ul>
+<li><strong>jina-embeddings-v2-small-en(Jina-v2)</strong> [Günther et al.(2023)]:33M 参数模型,在效率优化的同时保持有竞争力的效果;是原 Late Chunking 研究 [Günther et al.(2024)] 的主要基线。</li>
+<li><strong>jina-embeddings-v3(Jina-v3)</strong> [Günther et al.(2023)]:570M 参数模型,多语言能力增强,同样是上下文化切分评测的核心。</li>
+<li><strong>nomic-embed-text-v1(Nomic)</strong> [Nussbaum et al.(2024)]:137M 参数模型,在多种基准上效果强劲,先前工作曾用于评测上下文化切分。</li>
+<li><strong>multilingual-e5-large(E5-large)</strong> [Wang et al.(2024)]:560M 参数多语言模型,是检索研究的标准基线。加入它是为检验不同切分策略的效果能否推广到先前工作评测过的模型之外。</li>
+</ul>
+<p>前三个模型在原 Late Chunking 工作 [Günther et al.(2024)] 中已被评测;我们另加入 E5-large 以检验跨模型族的泛化。</p>
+<p>所有模型都在两种嵌入-切分顺序下评测。嵌入前切分:先分割文档,每块孤立嵌入。上下文化(嵌入后)切分:送入模型上下文窗口内可容纳的最大文本序列(如 8,192 token);若文档超过该限制,则划分为最少必要数量的窗口,在尽可能宽的上下文内生成 token 级嵌入,再按分割边界池化。</p>
+<h3>3.3 数据集与评测</h3>
+<p>我们的评测考察切分策略跨两种检索任务的泛化能力。</p>
+<h4>3.3.1 文档内检索</h4>
+<p>文档内检索使用 <strong>GutenQA</strong> 数据集 [Duarte et al.(2024)],包含 100 部经典文学作品与 3,000 个问答对。问题针对单本书内的特定细节,评测系统在长文档内定位信息的能力。</p>
+<p>GutenQA 的真值标注位于段落级。为兼容可能跨越多个段落或仅与真值部分重叠的块,我们定义:检索块与任一真值段落有任何重叠即算相关。遵循 LumberChunker [Duarte et al.(2024)],我们报告排名第 10 位的折扣累积增益(DCG@10):</p>
+<div class="equation">DCG@10 = Σ<sub>i=1..10</sub> (2<sup>rel_i</sup> − 1) / log₂(i + 1) <span>(1)</span></div>
+<p>其中 rel_i 表示排名第 i 位结果的相关度得分。</p>
+<h4>3.3.2 语料库内检索</h4>
+<p>语料库内检索使用 <strong>BEIR</strong> 基准 [Thakur et al.(2021)] 的六个数据集:FiQA、ArguAna、SciDocs、TREC-COVID、SciFact 与 NFCorpus。这扩展了 Late Chunking 测试的四个数据集(SciFact、NFCorpus、FiQA、TREC-COVID)。选择依据两条标准:其一,领域覆盖多样,从金融、科学文本到生物医学文献;其二,语料规模足够紧凑,使计算密集的 LLM 引导方法的评测可行。</p>
+<p>语料库内检索的相关度标注在文档级。遵循既有做法 [Dai and Callan(2019)],我们从文档内得分最高的块导出文档级相关度得分。这一最大池化(MaxP)策略广泛用于把块级证据聚合为文档排序。</p>
+<p>所有 BEIR 数据集报告第 10 位的归一化折扣累积增益(nDCG@10);该指标把 DCG@10 相对理想排序归一化,取值在 0 到 1 之间。</p>
+<h2>4 结果</h2>
+<h3>4.1 可复现性分析</h3>
+<p>我们首先在原始论文各自的原始评测语境内验证其主要论断。这一步在我们把分析扩展到新检索任务之前验证我们的实现。</p>
+<p><strong>表 1:在 GutenQA 上使用 text-embedding-ada-002 复现 LumberChunker 评测(DCG@10)。</strong></p>
+<table>
+<thead>
+<tr>
+<th>分割方法</th>
+<th style="text-align:right">原文报告</th>
+<th style="text-align:right">本文复现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>段落</td>
+<td style="text-align:right">0.4772</td>
+<td style="text-align:right">0.4879</td>
+</tr>
+<tr>
+<td>语义(Jina-v2)</td>
+<td style="text-align:right">0.4314</td>
+<td style="text-align:right">0.4457</td>
+</tr>
+<tr>
+<td>命题</td>
+<td style="text-align:right">0.4565</td>
+<td style="text-align:right">0.4687</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td style="text-align:right">0.6099</td>
+<td style="text-align:right">0.5953</td>
+</tr>
+</tbody>
+</table>
+<p><strong>原始论断</strong>:在长文档内定位特定信息(文档内检索)时,LumberChunker 显著优于结构化方法(如固定大小、句子)[Duarte et al.(2024)]。</p>
+<p><strong>我们的复现</strong>:表 1 在文档内检索上、用原始嵌入模型(text-embedding-ada-002)比较各分割方法。绝对值与原文略有差异,可能源于 OpenAI 嵌入 API 的非确定性,以及我们用 Gemini-2.5-Flash 替代已弃用的 Gemini-1.0-Pro 执行 LLM 引导分割。但相对排序得以保持:LumberChunker 在所有方法中取得最高效果,确认了原始发现。</p>
+<p><strong>原始论断</strong>:上下文化切分(先嵌入文档再分割)保留全局上下文,因此在标准语料库内基准上优于孤立嵌入各块 [Günther et al.(2024)]。</p>
+<p><strong>我们的复现</strong>:表 2 用原研究的主力模型 Jina-v2⁴,比较上下文化切分(Con-C)与嵌入前切分(Pre-C)。总体上,复现确认了原始发现:跨数据集与分割方法,上下文化切分一致优于嵌入前切分。唯一例外是语义分割,它在 FiQA 与 TREC-COVID 上结果不一致。我们推测该差异可能来自 LlamaIndex SemanticSplitterNodeParser 实现的版本差异⁵,因为这是唯一依赖外部库、行为随版本变化的分割方法。</p>
+<p><strong>表 2:在 BEIR 数据集上使用 Jina-v2 复现 Late Chunking 评测(nDCG@10)。Pre-C:嵌入前切分;Con-C:上下文化切分。粗体为 Pre-C 与 Con-C 中较高者。</strong></p>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th>分割方法</th>
+<th style="text-align:right">原文 Pre-C</th>
+<th style="text-align:right">原文 Con-C</th>
+<th style="text-align:right">复现 Pre-C</th>
+<th style="text-align:right">复现 Con-C</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>scifact</td>
+<td>固定大小</td>
+<td style="text-align:right">0.642</td>
+<td style="text-align:right"><strong>0.661</strong></td>
+<td style="text-align:right">0.638</td>
+<td style="text-align:right"><strong>0.652</strong></td>
+</tr>
+<tr>
+<td>〃</td>
+<td>句子</td>
+<td style="text-align:right">0.647</td>
+<td style="text-align:right"><strong>0.652</strong></td>
+<td style="text-align:right">0.655</td>
+<td style="text-align:right"><strong>0.660</strong></td>
+</tr>
+<tr>
+<td>〃</td>
+<td>语义</td>
+<td style="text-align:right">0.643</td>
+<td style="text-align:right"><strong>0.650</strong></td>
+<td style="text-align:right">0.645</td>
+<td style="text-align:right"><strong>0.650</strong></td>
+</tr>
+<tr>
+<td>nfcorpus</td>
+<td>固定大小</td>
+<td style="text-align:right">0.235</td>
+<td style="text-align:right"><strong>0.300</strong></td>
+<td style="text-align:right">0.226</td>
+<td style="text-align:right"><strong>0.304</strong></td>
+</tr>
+<tr>
+<td>〃</td>
+<td>句子</td>
+<td style="text-align:right">0.283</td>
+<td style="text-align:right"><strong>0.300</strong></td>
+<td style="text-align:right">0.285</td>
+<td style="text-align:right"><strong>0.302</strong></td>
+</tr>
+<tr>
+<td>〃</td>
+<td>语义</td>
+<td style="text-align:right">0.274</td>
+<td style="text-align:right"><strong>0.293</strong></td>
+<td style="text-align:right">0.275</td>
+<td style="text-align:right"><strong>0.293</strong></td>
+</tr>
+<tr>
+<td>fiqa</td>
+<td>固定大小</td>
+<td style="text-align:right">0.333</td>
+<td style="text-align:right"><strong>0.338</strong></td>
+<td style="text-align:right">0.331</td>
+<td style="text-align:right"><strong>0.337</strong></td>
+</tr>
+<tr>
+<td>〃</td>
+<td>句子</td>
+<td style="text-align:right">0.304</td>
+<td style="text-align:right"><strong>0.339</strong></td>
+<td style="text-align:right">0.310</td>
+<td style="text-align:right"><strong>0.341</strong></td>
+</tr>
+<tr>
+<td>〃</td>
+<td>语义</td>
+<td style="text-align:right">0.303</td>
+<td style="text-align:right"><strong>0.337</strong></td>
+<td style="text-align:right"><strong>0.303</strong></td>
+<td style="text-align:right">0.223</td>
+</tr>
+<tr>
+<td>trec-covid</td>
+<td>固定大小</td>
+<td style="text-align:right">0.634</td>
+<td style="text-align:right"><strong>0.647</strong></td>
+<td style="text-align:right">0.626</td>
+<td style="text-align:right"><strong>0.647</strong></td>
+</tr>
+<tr>
+<td>〃</td>
+<td>句子</td>
+<td style="text-align:right">0.665</td>
+<td style="text-align:right"><strong>0.666</strong></td>
+<td style="text-align:right"><strong>0.667</strong></td>
+<td style="text-align:right">0.665</td>
+</tr>
+<tr>
+<td>〃</td>
+<td>语义</td>
+<td style="text-align:right">0.662</td>
+<td style="text-align:right"><strong>0.663</strong></td>
+<td style="text-align:right"><strong>0.662</strong></td>
+<td style="text-align:right">0.625</td>
+</tr>
+</tbody>
+</table>
+<p><strong>小结</strong>:在确认 LumberChunker 在文档内检索的效果优势与 Late Chunking 对语料库内检索的收益均可复现之后,我们继续研究四个研究问题。以下小节通过在两种检索任务上评测全部分割方法(RQ1–RQ2)、考察分割方法与嵌入-切分顺序的交互(RQ3)以及分析块大小的混杂效应(RQ4)来扩展这些发现。</p>
+<h3>4.2 RQ1:分割方法对语料库内检索的影响</h3>
+<p>为建立各分割方法在语料库内检索上的基线效果,我们在六个 BEIR 数据集上、用四个嵌入模型、以嵌入前切分评估六种分割方法。表 3 给出该分析的结果。</p>
+<p><strong>发现 1:结构化方法优于语义/LLM 引导方法,且结构化方法彼此差异极小。</strong></p>
+<p>在全部四个嵌入模型下,结构化方法(段落、固定大小、句子)的平均效果高于 LLM 引导方法(LumberChunker、命题)与语义分割。段落分割在三个模型上取得最高平均 nDCG@10(Jina-v2:0.4303;Jina-v3:0.4948;E5-large:0.4997),Nomic 上则是固定大小最高(0.4801)。结构化方法之间的效果差距很小,通常在 1–3% 以内。例如 Jina-v3 下,段落(0.4948)仅比固定大小(0.4849)高 2%,比句子(0.4723)高 5%。这表明:对语料库内检索而言,统一、可预测的块边界比在每篇文档内寻找语义&quot;最优&quot;边界更重要。对使用嵌入前切分的从业者,结构化方法是明确的首选,且它们之间的差异可以忽略。</p>
+<p><strong>发现 2:命题分割在语料库内检索中一致劣于所有其他分割方法。</strong></p>
+<p>命题分割在所有模型上平均 nDCG@10 最低(0.3484–0.3937),相对段落分割有 15–27% 的效果损失。损失在 ArguAna 上尤其严重(0.29–0.36,损失 35–50%),FiQA 次之(0.21–0.28,损失 30–40%)。其原因很可能在于:命题分割把文本分解为原子事实,产生很小的块,丢失了周围文档的主题(上下文)信息。该假设在 RQ3 中得到支持:上下文化切分把周围文档上下文纳入块嵌入,显著改善了命题分割的效果。</p>
+<p><strong>发现 3:LumberChunker 的效果在 不同领域数据集之间方差很大。</strong></p>
+<p>与命题分割不同,LumberChunker 的效果随数据集大幅波动,而非一致偏低。它在 TREC-COVID 上取得或接近最好结果(Jina-v2:0.6890;Nomic:0.7762;E5-large:0.6952),但在 ArguAna 与 FiQA 上落入后半区。这种方差可能反映其设计:LumberChunker 识别文档内的主题转移,与结构化的科学摘要(TREC-COVID)契合,而与主题边界不明确的论辩或对话文本契合度差。对从业者而言,若语料由主题边界清晰、结构良好的文档组成,LumberChunker 值得考虑。但即便在最好情况下,LumberChunker 也只能追平而未超过结构化方法的效果,同时需要多得多的计算(处理速度:LumberChunker 1.11 篇/秒 vs. 段落 1,854 篇/秒⁶)。鉴于段落分割以极小成本达到相当效果,LumberChunker 对语料库内检索几乎没有实用优势。</p>
+<p><strong>表 3:嵌入前切分(Pre-C)下跨模型、分割方法与数据集的效果。GutenQA 为 DCG@10(文档内);BEIR 数据集为 nDCG@10(语料库内)。粗体:每模型-数据集最优;下划线:最差。上标:a=与最优差异显著(p&lt;0.05,配对 t 检验);b=与最差差异显著。</strong></p>
+<table>
+<thead>
+<tr>
+<th>分割方法</th>
+<th>GutenQA</th>
+<th>fiqa</th>
+<th>nfcorpus</th>
+<th>scifact</th>
+<th>trec-covid</th>
+<th>arguana</th>
+<th>scidocs</th>
+<th>平均</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Jina-v2</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>0.3892ᵃᵇ</td>
+<td><strong>0.3347ᵇ</strong></td>
+<td>0.3042ᵇ</td>
+<td>0.6389</td>
+<td>0.6518ᵇ</td>
+<td>0.4682ᵃᵇ</td>
+<td><strong>0.1843ᵇ</strong></td>
+<td>0.4303</td>
+</tr>
+<tr>
+<td>句子</td>
+<td><u>0.3261ᵃ</u></td>
+<td>0.3096ᵃᵇ</td>
+<td>0.2847ᵃᵇ</td>
+<td>0.6548</td>
+<td>0.6674ᵇ</td>
+<td>0.4675ᵃᵇ</td>
+<td>0.1732ᵃᵇ</td>
+<td>0.4262</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>0.3479ᵃᵇ</td>
+<td>0.3313ᵇ</td>
+<td><u>0.2262ᵃ</u></td>
+<td><u>0.6377ᵃ</u></td>
+<td>0.6256ᵃᵇ</td>
+<td><strong>0.4803ᵇ</strong></td>
+<td>0.1807ᵃᵇ</td>
+<td>0.4136</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>0.3859ᵃᵇ</td>
+<td>0.3030ᵃᵇ</td>
+<td>0.2746ᵃᵇ</td>
+<td>0.6445</td>
+<td>0.6618ᵇ</td>
+<td>0.4022ᵃᵇ</td>
+<td>0.1760ᵃᵇ</td>
+<td>0.4104</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td><strong>0.4659ᵇ</strong></td>
+<td>0.3044ᵃᵇ</td>
+<td>0.2849ᵃᵇ</td>
+<td><strong>0.6630ᵇ</strong></td>
+<td><strong>0.6890ᵇ</strong></td>
+<td>0.4472ᵃᵇ</td>
+<td>0.1735ᵃᵇ</td>
+<td>0.4270</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>0.4214ᵃᵇ</td>
+<td><u>0.2105ᵃ</u></td>
+<td><strong>0.3058ᵇ</strong></td>
+<td>0.6410</td>
+<td><u>0.4375ᵃ</u></td>
+<td><u>0.3589ᵃ</u></td>
+<td><u>0.1367ᵃ</u></td>
+<td>0.3484</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>0.3894</td>
+<td>0.2989</td>
+<td>0.2801</td>
+<td>0.6467</td>
+<td>0.6222</td>
+<td>0.4374</td>
+<td>0.1707</td>
+<td>0.4093</td>
+</tr>
+<tr>
+<td><strong>Jina-v3</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>0.4574ᵃᵇ</td>
+<td><strong>0.4747ᵇ</strong></td>
+<td><strong>0.3663</strong></td>
+<td><strong>0.7247ᵇ</strong></td>
+<td><strong>0.7721ᵇ</strong></td>
+<td>0.4325ᵇ</td>
+<td><strong>0.1984ᵇ</strong></td>
+<td>0.4948</td>
+</tr>
+<tr>
+<td>句子</td>
+<td><u>0.3877ᵃ</u></td>
+<td>0.4333ᵃᵇ</td>
+<td>0.3566</td>
+<td>0.7163</td>
+<td>0.7135ᵃᵇ</td>
+<td>0.4256ᵃᵇ</td>
+<td>0.1888ᵃᵇ</td>
+<td>0.4723</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>0.4350ᵃᵇ</td>
+<td>0.4680ᵇ</td>
+<td>0.3552</td>
+<td>0.7169</td>
+<td>0.7385ᵃᵇ</td>
+<td><strong>0.4362ᵇ</strong></td>
+<td>0.1948ᵃᵇ</td>
+<td>0.4849</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>0.4105ᵃᵇ</td>
+<td>0.4396ᵃᵇ</td>
+<td>0.3596</td>
+<td>0.7103</td>
+<td>0.7474ᵇ</td>
+<td>0.3894ᵃᵇ</td>
+<td>0.1890ᵃᵇ</td>
+<td>0.4726</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td><strong>0.5640ᵇ</strong></td>
+<td>0.4308ᵃᵇ</td>
+<td>0.3590</td>
+<td>0.7125</td>
+<td>0.7081ᵃᵇ</td>
+<td>0.4152ᵃᵇ</td>
+<td>0.1881ᵃᵇ</td>
+<td>0.4690</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>0.4182ᵃᵇ</td>
+<td><u>0.2808ᵃ</u></td>
+<td><u>0.3524</u></td>
+<td><u>0.6924ᵃ</u></td>
+<td><u>0.5606ᵃ</u></td>
+<td><u>0.2931ᵃ</u></td>
+<td><u>0.1535ᵃ</u></td>
+<td>0.3888</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>0.4455</td>
+<td>0.4212</td>
+<td>0.3582</td>
+<td>0.7122</td>
+<td>0.7067</td>
+<td>0.3987</td>
+<td>0.1854</td>
+<td>0.4637</td>
+</tr>
+<tr>
+<td><strong>Nomic</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>0.4892ᵃᵇ</td>
+<td>0.3802ᵇ</td>
+<td><strong>0.3509</strong></td>
+<td>0.7047</td>
+<td>0.7652ᵇ</td>
+<td>0.4904ᵃᵇ</td>
+<td>0.1808ᵇ</td>
+<td>0.4787</td>
+</tr>
+<tr>
+<td>句子</td>
+<td><u>0.4146ᵃ</u></td>
+<td>0.3620ᵃᵇ</td>
+<td>0.3502</td>
+<td><strong>0.7150</strong></td>
+<td>0.7472ᵇ</td>
+<td><strong>0.5084ᵇ</strong></td>
+<td>0.1732ᵃᵇ</td>
+<td>0.4760</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>0.4643ᵃᵇ</td>
+<td><strong>0.3855ᵇ</strong></td>
+<td>0.3484</td>
+<td>0.7029</td>
+<td>0.7584ᵇ</td>
+<td>0.5042ᵇ</td>
+<td><strong>0.1812ᵇ</strong></td>
+<td>0.4801</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>0.4274ᵃ</td>
+<td>0.3562ᵃᵇ</td>
+<td>0.3506</td>
+<td>0.7040</td>
+<td>0.7431ᵇ</td>
+<td>0.4434ᵃᵇ</td>
+<td>0.1707ᵃᵇ</td>
+<td>0.4613</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td><strong>0.6016ᵇ</strong></td>
+<td>0.3582ᵃᵇ</td>
+<td>0.3502</td>
+<td>0.7047</td>
+<td><strong>0.7762ᵇ</strong></td>
+<td>0.4928ᵃᵇ</td>
+<td>0.1747ᵃᵇ</td>
+<td>0.4762</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>0.4525ᵃᵇ</td>
+<td><u>0.2554ᵃ</u></td>
+<td><u>0.3373</u></td>
+<td><u>0.7025</u></td>
+<td><u>0.5624ᵃ</u></td>
+<td><u>0.3660ᵃ</u></td>
+<td><u>0.1384ᵃ</u></td>
+<td>0.3937</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>0.4750</td>
+<td>0.3496</td>
+<td>0.3479</td>
+<td>0.7056</td>
+<td>0.7254</td>
+<td>0.4675</td>
+<td>0.1698</td>
+<td>0.4610</td>
+</tr>
+<tr>
+<td><strong>E5-Large</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>0.4663ᵃᵇ</td>
+<td><strong>0.4617ᵇ</strong></td>
+<td>0.3566</td>
+<td><strong>0.7129ᵇ</strong></td>
+<td>0.6634</td>
+<td><strong>0.5999ᵇ</strong></td>
+<td><strong>0.2038ᵇ</strong></td>
+<td>0.4997</td>
+</tr>
+<tr>
+<td>句子</td>
+<td>0.4063ᵃᵇ</td>
+<td>0.4315ᵃᵇ</td>
+<td><strong>0.3583</strong></td>
+<td>0.6873</td>
+<td>0.6712ᵇ</td>
+<td>0.5646ᵃᵇ</td>
+<td>0.1836ᵃᵇ</td>
+<td>0.4828</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>0.4363ᵃᵇ</td>
+<td>0.4509ᵃᵇ</td>
+<td><u>0.3479</u></td>
+<td>0.6740ᵃ</td>
+<td>0.6601</td>
+<td>0.5905ᵃᵇ</td>
+<td>0.1940ᵃᵇ</td>
+<td>0.4863</td>
+</tr>
+<tr>
+<td>语义</td>
+<td><u>0.3186ᵃ</u></td>
+<td>0.4173ᵃᵇ</td>
+<td><strong>0.3583</strong></td>
+<td>0.6892ᵃ</td>
+<td>0.6784ᵇ</td>
+<td>0.5540ᵃᵇ</td>
+<td>0.1888ᵃᵇ</td>
+<td>0.4810</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td><strong>0.5495ᵇ</strong></td>
+<td>0.4190ᵃᵇ</td>
+<td>0.3557</td>
+<td>0.6884</td>
+<td><strong>0.6952ᵇ</strong></td>
+<td>0.5560ᵃᵇ</td>
+<td>0.1840ᵃᵇ</td>
+<td>0.4830</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>0.4277ᵃᵇ</td>
+<td><u>0.2539ᵃ</u></td>
+<td>0.3576</td>
+<td><u>0.6705ᵃ</u></td>
+<td><u>0.5939ᵃ</u></td>
+<td><u>0.3030ᵃ</u></td>
+<td><u>0.1509ᵃ</u></td>
+<td>0.3883</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>0.4341</td>
+<td>0.4057</td>
+<td>0.3557</td>
+<td>0.6871</td>
+<td>0.6604</td>
+<td>0.5280</td>
+<td>0.1842</td>
+<td>0.4702</td>
+</tr>
+</tbody>
+</table>
+<p><strong>小结</strong>:对使用嵌入前切分的语料库内检索,用结构化方法。推荐段落或固定大小分割:快速、简单、效果稳定。LLM 引导方法尽管计算昂贵,却没有效果优势。</p>
+<h3>4.3 RQ2:分割方法能否跨检索任务泛化?</h3>
+<p>为确定语料库内检索观察到的效果排序能否泛化到文档内检索,我们在 GutenQA 上用同样四个嵌入模型评估全部六种分割方法。GutenQA 代表另一种检索挑战:在单篇长文档(书籍)内定位相关段落,而非在语料中识别相关文档。表 3 给出文档内检索结果(GutenQA 列)。</p>
+<p><strong>发现 1:分割方法的效果排序在语料库内与文档内检索之间发生反转。</strong></p>
+<p>在语料库内检索中排名第 2–4 的 LumberChunker,在 GutenQA 上于全部四个模型取得最高效果(Jina-v2:0.4659;Jina-v3:0.5640;Nomic:0.6016;E5-large:0.5495),超过段落分割 10–30%。反过来,在语料库内检索表现最好的段落分割,在文档内检索中跌至第 2–3 位。这印证了我们在 RQ1 中的假设:LumberChunker 的效果依赖文档结构。GutenQA 由叙事结构清晰的文学作品构成,与 LumberChunker 的主题转移检测高度契合。文档内检索要求把相关块与同文档内的其他块区分开,而 LumberChunker 的自适应边界使相关块比统一的段落边界更可区分。</p>
+<p><strong>发现 2:命题分割仍然偏弱,但相对位次回升。</strong></p>
+<p>命题分割在两种检索任务中效果都很差,但其相对排名从语料库内检索的一致最差,回升到 GutenQA 上有竞争力(第 2–4 名)。这种部分恢复表明:原子事实虽仍缺乏足够上下文,但文档内检索设定对这一局限的敏感度低于跨文档检索。</p>
+<p><strong>小结</strong>:分割方法不能跨检索任务泛化。文档内检索用 LumberChunker;语料库内检索用结构化方法(RQ1)。这确认了 LumberChunker 的效果依赖文档结构:它在内部组织清晰的文档(GutenQA 的文学作品、TREC-COVID 的科学摘要)上表现好,在结构较弱的文档组成的语料上表现差。</p>
+<h3>4.4 RQ3:上下文化切分的效果</h3>
+<p>为评估上下文化切分是否在分割方法与检索任务上提供一致改进,我们在两种任务上把它与嵌入前切分比较,覆盖全部分割方法。表 4 给出相对效果变化(百分比),表 5 给出上下文化切分下的绝对效果。</p>
+<p><strong>表 4:从嵌入前切分(Pre-C)到上下文化切分(Con-C)的相对效果变化(%)。绿色:改进;红色:退化。∗:统计显著(p&lt;0.05,配对 t 检验)。</strong></p>
+<table>
+<thead>
+<tr>
+<th>分割方法</th>
+<th>GutenQA</th>
+<th>fiqa</th>
+<th>nfcorpus</th>
+<th>scifact</th>
+<th>trec-covid</th>
+<th>arguana</th>
+<th>scidocs</th>
+<th>平均</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Jina-v2</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>-10.76∗</td>
+<td>-0.02</td>
+<td>-0.16</td>
+<td>0.00</td>
+<td>0.00</td>
+<td>-0.21</td>
+<td>+0.73∗</td>
+<td>+0.06</td>
+</tr>
+<tr>
+<td>句子</td>
+<td>-5.39∗</td>
+<td>+9.97∗</td>
+<td>+6.16∗</td>
+<td>+0.75</td>
+<td>-0.37</td>
+<td>+1.96∗</td>
+<td>+6.48∗</td>
+<td>+4.16</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>-2.85∗</td>
+<td>+2.00</td>
+<td>+34.41∗</td>
+<td>+2.30</td>
+<td>+3.38</td>
+<td>-1.06∗</td>
+<td>+2.18∗</td>
+<td>+7.20</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>+4.56∗</td>
+<td>-26.37∗</td>
+<td>+6.72∗</td>
+<td>+0.83</td>
+<td>-5.56</td>
+<td>+17.49∗</td>
+<td>+3.90∗</td>
+<td>-0.50</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td>-10.45∗</td>
+<td>+10.76∗</td>
+<td>+6.75∗</td>
+<td>-0.62</td>
+<td>-1.54</td>
+<td>+6.40∗</td>
+<td>+6.32∗</td>
+<td>+4.68</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>-6.06∗</td>
+<td>+49.02∗</td>
+<td>+2.95</td>
+<td>+1.45</td>
+<td>+26.74∗</td>
+<td>+36.77∗</td>
+<td>+20.27∗</td>
+<td>+22.87</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>-5.16</td>
+<td>+7.56</td>
+<td>+9.47</td>
+<td>+0.78</td>
+<td>+3.78</td>
+<td>+10.22</td>
+<td>+6.65</td>
+<td>+6.41</td>
+</tr>
+<tr>
+<td><strong>Jina-v3</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>-37.88∗</td>
+<td>-0.00</td>
+<td>+0.00</td>
+<td>0.00</td>
+<td>0.00</td>
+<td>-0.01</td>
+<td>+0.49</td>
+<td>+0.08</td>
+</tr>
+<tr>
+<td>句子</td>
+<td>-35.01∗</td>
+<td>+10.66∗</td>
+<td>+3.02</td>
+<td>+2.46∗</td>
+<td>+7.83∗</td>
+<td>-1.46</td>
+<td>+4.90∗</td>
+<td>+4.57</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>-35.20∗</td>
+<td>+2.25∗</td>
+<td>+3.67∗</td>
+<td>+1.86</td>
+<td>+3.66</td>
+<td>-2.31∗</td>
+<td>+1.84∗</td>
+<td>+1.83</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>-18.38∗</td>
+<td>-26.73∗</td>
+<td>+2.05</td>
+<td>+1.83</td>
+<td>-6.53</td>
+<td>+12.06∗</td>
+<td>+4.93∗</td>
+<td>-2.07</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td>-35.19∗</td>
+<td>+9.84∗</td>
+<td>+2.04</td>
+<td>+1.37</td>
+<td>+8.06∗</td>
+<td>+1.49</td>
+<td>+6.02∗</td>
+<td>+4.80</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>-17.25∗</td>
+<td>+54.75∗</td>
+<td>+4.23</td>
+<td>+3.65∗</td>
+<td>+29.43∗</td>
+<td>+51.04∗</td>
+<td>+19.56∗</td>
+<td>+27.11</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>-29.82</td>
+<td>+8.46</td>
+<td>+2.50</td>
+<td>+1.86</td>
+<td>+7.08</td>
+<td>+10.13</td>
+<td>+6.29</td>
+<td>+6.05</td>
+</tr>
+<tr>
+<td><strong>Nomic</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>-62.47∗</td>
+<td>0.00</td>
+<td>-0.05</td>
+<td>0.00</td>
+<td>0.00</td>
+<td>+0.00</td>
+<td>-0.10</td>
+<td>-0.03</td>
+</tr>
+<tr>
+<td>句子</td>
+<td>-62.57∗</td>
+<td>+4.95∗</td>
+<td>+1.31</td>
+<td>-0.48</td>
+<td>+4.23∗</td>
+<td>-4.47∗</td>
+<td>+2.02</td>
+<td>+1.26</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>-63.23∗</td>
+<td>+0.37</td>
+<td>+0.70</td>
+<td>+0.56</td>
+<td>-1.17</td>
+<td>-3.31∗</td>
+<td>-0.97</td>
+<td>-0.64</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>-43.16∗</td>
+<td>-25.43∗</td>
+<td>+0.81</td>
+<td>+0.15</td>
+<td>-1.81</td>
+<td>+9.54∗</td>
+<td>+5.05∗</td>
+<td>-1.95</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td>-61.66∗</td>
+<td>+6.45∗</td>
+<td>+1.14</td>
+<td>+1.31</td>
+<td>+2.46</td>
+<td>-1.58</td>
+<td>+4.75∗</td>
+<td>+2.42</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>-25.94∗</td>
+<td>+29.63∗</td>
+<td>+4.15∗</td>
+<td>+3.90∗</td>
+<td>+9.68∗</td>
+<td>+31.18∗</td>
+<td>+15.16∗</td>
+<td>+15.62</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>-53.17</td>
+<td>+2.66</td>
+<td>+1.34</td>
+<td>+0.91</td>
+<td>+2.23</td>
+<td>+5.23</td>
+<td>+4.32</td>
+<td>+2.78</td>
+</tr>
+<tr>
+<td><strong>E5-Large</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>-9.74∗</td>
+<td>+0.10</td>
+<td>-0.02</td>
+<td>-0.16</td>
+<td>+0.00</td>
+<td>-0.05</td>
+<td>+0.87∗</td>
+<td>+0.12</td>
+</tr>
+<tr>
+<td>句子</td>
+<td>-10.95∗</td>
+<td>+6.78∗</td>
+<td>-0.94</td>
+<td>+2.08</td>
+<td>-2.84</td>
+<td>+5.30∗</td>
+<td>+11.82∗</td>
+<td>+3.70</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>+0.01</td>
+<td>+2.96∗</td>
+<td>+1.62</td>
+<td>+6.54∗</td>
+<td>+1.23</td>
+<td>+0.89</td>
+<td>+6.20∗</td>
+<td>+3.24</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>+1.95∗</td>
+<td>-23.56∗</td>
+<td>-1.33</td>
+<td>+1.28</td>
+<td>-7.04</td>
+<td>+6.99∗</td>
+<td>+8.44∗</td>
+<td>-2.54</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td>-3.08∗</td>
+<td>+10.32∗</td>
+<td>-1.14</td>
+<td>+2.53</td>
+<td>-4.04</td>
+<td>+6.57∗</td>
+<td>+11.65∗</td>
+<td>+4.32</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>-1.18</td>
+<td>+62.80∗</td>
+<td>-2.99</td>
+<td>-3.94</td>
+<td>-2.18</td>
+<td>+83.30∗</td>
+<td>+24.65∗</td>
+<td>+26.94</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>-3.83</td>
+<td>+9.90</td>
+<td>-0.80</td>
+<td>+1.39</td>
+<td>-2.48</td>
+<td>+17.17</td>
+<td>+10.60</td>
+<td>+5.96</td>
+</tr>
+</tbody>
+</table>
+<p><strong>发现 1:上下文化切分总体改进语料库内检索,LLM 引导方法获益最大。</strong></p>
+<p>如表 4 所示,上下文化切分对多数分割方法改进语料库内检索效果。命题分割获益最大,平均改进 +22.87%(Jina-v2)、+27.11%(Jina-v3)、+15.62%(Nomic)、+26.94%(E5-large)。LumberChunker 也有稳定改进,平均 +2.42% 至 +4.80%。结构化方法获益较小,增益较小且时有正负混杂。这印证了 RQ1 的假设:命题分割在嵌入前切分下的糟糕表现源于丢失文档上下文,而上下文化切分把周围信息纳入块嵌入,恢复了这部分上下文。</p>
+<p><strong>表 5:上下文化切分(Con-C)下跨模型、分割方法与数据集的效果。GutenQA 为 DCG@10(文档内);BEIR 数据集为 nDCG@10(语料库内)。粗体:每模型-数据集最优;下划线:最差。上标:a=与最优差异显著(p&lt;0.05,配对 t 检验);b=与最差差异显著。</strong></p>
+<table>
+<thead>
+<tr>
+<th>分割方法</th>
+<th>GutenQA</th>
+<th>fiqa</th>
+<th>nfcorpus</th>
+<th>scifact</th>
+<th>trec-covid</th>
+<th>arguana</th>
+<th>scidocs</th>
+<th>平均</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Jina-v2</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>0.3473ᵃᵇ</td>
+<td>0.3346ᵇ</td>
+<td>0.3038ᵃᵇ</td>
+<td><u>0.6389ᵃ</u></td>
+<td>0.6518ᵃᵇ</td>
+<td><u>0.4672ᵃ</u></td>
+<td><strong>0.1856ᵇ</strong></td>
+<td>0.4303</td>
+</tr>
+<tr>
+<td>句子</td>
+<td><u>0.3085ᵃ</u></td>
+<td><strong>0.3405ᵇ</strong></td>
+<td>0.3022ᵃᵇ</td>
+<td><strong>0.6597ᵇ</strong></td>
+<td>0.6649ᵇ</td>
+<td>0.4767ᵇ</td>
+<td>0.1844ᵇ</td>
+<td>0.4381</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>0.3380ᵃᵇ</td>
+<td>0.3379ᵇ</td>
+<td>0.3040ᵇ</td>
+<td>0.6524</td>
+<td>0.6468ᵃᵇ</td>
+<td>0.4752ᵃᵇ</td>
+<td>0.1846ᵇ</td>
+<td>0.4335</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>0.4035ᵃᵇ</td>
+<td><u>0.2231ᵃ</u></td>
+<td><u>0.2931ᵃ</u></td>
+<td>0.6498</td>
+<td>0.6250ᵃᵇ</td>
+<td>0.4726ᵃ</td>
+<td>0.1829ᵇ</td>
+<td>0.4077</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td><strong>0.4172ᵇ</strong></td>
+<td>0.3371ᵇ</td>
+<td>0.3041ᵇ</td>
+<td>0.6589ᵇ</td>
+<td><strong>0.6784ᵇ</strong></td>
+<td>0.4758ᵃᵇ</td>
+<td>0.1844ᵇ</td>
+<td>0.4398</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>0.3959ᵃᵇ</td>
+<td>0.3136ᵃᵇ</td>
+<td><strong>0.3148ᵇ</strong></td>
+<td>0.6503</td>
+<td><u>0.5545ᵃ</u></td>
+<td><strong>0.4909ᵇ</strong></td>
+<td><u>0.1644ᵃ</u></td>
+<td>0.4148</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>0.3684</td>
+<td>0.3145</td>
+<td>0.3037</td>
+<td>0.6517</td>
+<td>0.6369</td>
+<td>0.4764</td>
+<td>0.1811</td>
+<td>0.4274</td>
+</tr>
+<tr>
+<td><strong>Jina-v3</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>0.2842ᵃᵇ</td>
+<td>0.4747ᵃᵇ</td>
+<td><u>0.3663</u></td>
+<td>0.7247</td>
+<td><strong>0.7721ᵇ</strong></td>
+<td>0.4325ᵇ</td>
+<td><strong>0.1994ᵇ</strong></td>
+<td>0.4949</td>
+</tr>
+<tr>
+<td>句子</td>
+<td><u>0.2520ᵃ</u></td>
+<td><strong>0.4795ᵇ</strong></td>
+<td>0.3673</td>
+<td><strong>0.7340</strong></td>
+<td>0.7693ᵇ</td>
+<td><u>0.4194ᵃ</u></td>
+<td>0.1980ᵇ</td>
+<td>0.4946</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>0.2818ᵃᵇ</td>
+<td>0.4785ᵇ</td>
+<td><strong>0.3682</strong></td>
+<td>0.7302</td>
+<td>0.7656ᵇ</td>
+<td>0.4261ᵃᵇ</td>
+<td>0.1984ᵇ</td>
+<td>0.4945</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>0.3350ᵃᵇ</td>
+<td><u>0.3221ᵃ</u></td>
+<td>0.3670</td>
+<td>0.7233ᵃ</td>
+<td><u>0.6986ᵃ</u></td>
+<td>0.4364ᵇ</td>
+<td>0.1983ᵇ</td>
+<td>0.4576</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td><strong>0.3655ᵇ</strong></td>
+<td>0.4732ᵃᵇ</td>
+<td><u>0.3663</u></td>
+<td>0.7223ᵃ</td>
+<td>0.7652ᵇ</td>
+<td>0.4214ᵃ</td>
+<td><strong>0.1994ᵇ</strong></td>
+<td>0.4913</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>0.3460ᵃᵇ</td>
+<td>0.4345ᵃᵇ</td>
+<td>0.3673</td>
+<td><u>0.7176</u></td>
+<td>0.7256</td>
+<td><strong>0.4426ᵇ</strong></td>
+<td><u>0.1836ᵃ</u></td>
+<td>0.4785</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>0.3108</td>
+<td>0.4438</td>
+<td>0.3671</td>
+<td>0.7253</td>
+<td>0.7494</td>
+<td>0.4297</td>
+<td>0.1962</td>
+<td>0.4853</td>
+</tr>
+<tr>
+<td><strong>Nomic</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>0.1836ᵃᵇ</td>
+<td>0.3802ᵃᵇ</td>
+<td><u>0.3507</u></td>
+<td><u>0.7047ᵃ</u></td>
+<td>0.7652ᵇ</td>
+<td><strong>0.4904</strong></td>
+<td>0.1806ᵇ</td>
+<td>0.4786</td>
+</tr>
+<tr>
+<td>句子</td>
+<td><u>0.1552ᵃ</u></td>
+<td>0.3799ᵃᵇ</td>
+<td><strong>0.3548</strong></td>
+<td>0.7115</td>
+<td>0.7788ᵇ</td>
+<td>0.4857</td>
+<td>0.1767ᵃᵇ</td>
+<td>0.4812</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>0.1708ᵃᵇ</td>
+<td><strong>0.3869ᵇ</strong></td>
+<td>0.3509</td>
+<td>0.7069</td>
+<td>0.7495ᵃᵇ</td>
+<td>0.4875</td>
+<td>0.1794ᵇ</td>
+<td>0.4768</td>
+</tr>
+<tr>
+<td>语义</td>
+<td>0.2429ᵃᵇ</td>
+<td><u>0.2656ᵃ</u></td>
+<td>0.3534</td>
+<td>0.7050ᵃ</td>
+<td>0.7296ᵃᵇ</td>
+<td>0.4857</td>
+<td>0.1793ᵃᵇ</td>
+<td>0.4531</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td>0.2307ᵃᵇ</td>
+<td>0.3813ᵇ</td>
+<td>0.3541</td>
+<td>0.7140</td>
+<td><strong>0.7953ᵇ</strong></td>
+<td>0.4850</td>
+<td><strong>0.1830ᵇ</strong></td>
+<td>0.4855</td>
+</tr>
+<tr>
+<td>命题</td>
+<td><strong>0.3351ᵇ</strong></td>
+<td>0.3311ᵃᵇ</td>
+<td>0.3513</td>
+<td><strong>0.7299ᵇ</strong></td>
+<td><u>0.6169ᵃ</u></td>
+<td><u>0.4801</u></td>
+<td><u>0.1594ᵃ</u></td>
+<td>0.4448</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>0.2197</td>
+<td>0.3542</td>
+<td>0.3525</td>
+<td>0.7120</td>
+<td>0.7392</td>
+<td>0.4857</td>
+<td>0.1764</td>
+<td>0.4700</td>
+</tr>
+<tr>
+<td><strong>E5-Large</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>段落</td>
+<td>0.4209ᵃᵇ</td>
+<td>0.4622ᵇ</td>
+<td><strong>0.3565</strong></td>
+<td>0.7118ᵇ</td>
+<td>0.6634ᵇ</td>
+<td><strong>0.5996ᵇ</strong></td>
+<td>0.2055ᵇ</td>
+<td>0.4998</td>
+</tr>
+<tr>
+<td>句子</td>
+<td>0.3618ᵃᵇ</td>
+<td>0.4607ᵇ</td>
+<td>0.3549</td>
+<td>0.7016ᵃᵇ</td>
+<td>0.6522ᵇ</td>
+<td>0.5946ᵃᵇ</td>
+<td>0.2053ᵇ</td>
+<td>0.4949</td>
+</tr>
+<tr>
+<td>固定大小</td>
+<td>0.4364ᵃᵇ</td>
+<td><strong>0.4643ᵇ</strong></td>
+<td>0.3536</td>
+<td><strong>0.7181ᵇ</strong></td>
+<td><strong>0.6682ᵇ</strong></td>
+<td>0.5958ᵃᵇ</td>
+<td><strong>0.2061ᵇ</strong></td>
+<td>0.5010</td>
+</tr>
+<tr>
+<td>语义</td>
+<td><u>0.3248ᵃ</u></td>
+<td><u>0.3190ᵃ</u></td>
+<td>0.3535</td>
+<td>0.6980ᵃᵇ</td>
+<td>0.6307ᵃ</td>
+<td>0.5927ᵃᵇ</td>
+<td>0.2047ᵇ</td>
+<td>0.4664</td>
+</tr>
+<tr>
+<td>LumberChunker</td>
+<td><strong>0.5326ᵇ</strong></td>
+<td>0.4622ᵇ</td>
+<td>0.3517</td>
+<td>0.7058ᵃᵇ</td>
+<td>0.6671ᵇ</td>
+<td>0.5925ᵃᵇ</td>
+<td>0.2055ᵇ</td>
+<td>0.4975</td>
+</tr>
+<tr>
+<td>命题</td>
+<td>0.4227ᵃᵇ</td>
+<td>0.4133ᵃᵇ</td>
+<td><u>0.3469</u></td>
+<td><u>0.6441ᵃ</u></td>
+<td><u>0.5810ᵃ</u></td>
+<td><u>0.5553ᵃ</u></td>
+<td><u>0.1881ᵃ</u></td>
+<td>0.4548</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>0.4165</td>
+<td>0.4303</td>
+<td>0.3528</td>
+<td>0.6966</td>
+<td>0.6437</td>
+<td>0.5884</td>
+<td>0.2025</td>
+<td>0.4857</td>
+</tr>
+</tbody>
+</table>
+<p><strong>发现 2:大的相对增益不保证高的绝对效果。</strong></p>
+<p>尽管命题分割从上下文化切分获得最大相对改进,它并未取得最高绝对效果。如表 5 所示,在多数配置下,命题方法在语料库内的绝对效果仍低于结构化方法与 LumberChunker。例如 Jina-v3 下,命题分割在上下文化切分下的平均 nDCG@10 为 0.4785,而段落为 0.4949,LumberChunker 为 0.4913。大的百分比改进反映的是从很低的嵌入前基线恢复,而非达到顶尖效果。对从业者而言,上下文化切分使命题分割&quot;可用&quot;,但不&quot;最优&quot;。</p>
+<p><strong>发现 3:上下文化切分在所有配置下都损害文档内检索。</strong></p>
+<p>上下文化切分虽改进语料库内检索,却在 GutenQA 上一致降低文档内检索效果,覆盖全部分割方法与模型。严重程度随模型而异:Nomic 损失最重(平均 −53.17%),其次 Jina-v3(−29.82%),Jina-v2(−5.16%)与 E5-large(−3.83%)退化较温和。回忆 RQ2:文档内检索要求把相关块与同文档内其他块区分开。我们假设,上下文化切分产生的嵌入编码了更宽泛的文档主题而非块特有的细节,使同一文档内的块彼此更相似、因而更难区分。</p>
+<p><strong>发现 4:上下化切分的效果随模型与数据集而变。</strong></p>
+<p>上下文化切分的影响同时取决于嵌入模型与数据集。模型方面:Jina-v2、Jina-v3 与 Nomic 在语料库内检索上显示更一致的改进,而 E5-large 结果混杂,部分配置退化。这一差异可能源于上下文窗口大小:Jina-v2、Jina-v3 与 Nomic 支持长上下文输入(8,192 token),允许上下文化切分纳入大量周围文档信息;E5-large 的上下文上限为 512 token,可利用的额外上下文受限。数据集方面:FiQA 上语义分割在所有模型下都显著退化(Jina-v2 −26.37%、Jina-v3 −26.73%、Nomic −25.43%、E5-large −23.56%),尽管在其他数据集上有改进。回看表 3,语义分割在嵌入前切分下于 FiQA 上已落后于结构化方法,说明语义边界与这个金融论坛讨论语料并不契合;上下文化切分使其更糟:把定义不清的边界所产生的上下文纳入进来,进一步降低效果而非带来帮助。</p>
+<p><strong>小结</strong>:上下文化切分不是普适改进。它总体上有利于语料库内检索(尤其配合 LLM 引导分割),但增益随模型与数据集而变。更关键的是,它一致损害文档内检索。给从业者的建议:语料库内检索配合 LLM 引导分割时使用上下文化切分;文档内检索避免使用。</p>
+<h3>4.5 RQ4:块大小的影响</h3>
+<p>为考察块大小是否混杂了分割方法之间的效果差异,我们分析每查询层面块大小与检索效果的关系。对每个查询,我们计算相关文档(语料库内)或相关段落(文档内)的平均块大小(token 数⁷),并与检索效果求相关。图 2 给出 Jina-v3 的结果;其他模型模式类似,可在我们的代码库中获取⁸。</p>
+<p><img src="assets/figure2.png" alt="图2:块大小与检索效果的每查询相关(Jina-v3)原图" /></p>
+<p><strong>图 2 图注译文</strong>:Jina-v3 下块大小与检索效果的每查询相关。左:文档内检索(GutenQA,DCG@10);右:语料库内检索(BEIR,nDCG@10)。行:嵌入前切分(上)、上下文化切分(中)、相对改进(下)。∗:p&lt;0.05。</p>
+<p>图内标注的相关系数(依原图文字转录):横轴均为平均块大小(token,对数刻度),纵轴自上而下依次为 Pre-C 效果、Con-C 效果、Con-C 相对改进(%);每行按结构化方法(段落/句子/固定大小)与语义/LLM 引导方法(语义/LumberChunker/命题)分左右两组子图。</p>
+<p>| 条件 | 段落 | 句子 | 固定大小 | 语义 | LumberChunker | 命题 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| GutenQA,Pre-C | 0.57∗ | 0.52∗ | 0.00 | 0.10 | −0.04 | 0.41∗ |
+| BEIR,Pre-C | 0.12∗ | 0.07∗ | 0.08∗ | 0.15∗ | 0.08∗ | 0.16∗ |
+| GutenQA,Con-C | 0.44∗ | 0.35∗ | 0.20∗ | 0.26∗ | 0.06 | 0.40∗ |
+| BEIR,Con-C | 0.12∗ | 0.05∗ | 0.08∗ | 0.10∗ | 0.04∗ | 0.04∗ |
+| GutenQA,相对改进 | −0.05 | −0.11 | 0.25∗ | 0.23∗ | 0.05 | −0.07 |
+| BEIR,相对改进 | nan | −0.02 | nan | −0.03 | −0.05∗ | −0.07∗ |</p>
+<blockquote>
+<p><strong>译者注(原文内部不一致)</strong>:图 2 底行(相对改进行)的标注与正文叙述存在出入。正文&quot;发现 3&quot;称固定大小为&quot;r = 0.23, p&lt;0.05&quot;,而图中标注为 r=0.25∗;正文称语料库内&quot;所有相关系数接近零(r = −0.09 至 0.03)&quot;,而图中 BEIR 底行实际标注为 nan/−0.02/nan/−0.03/−0.05∗/−0.07∗(段落与固定大小为 nan,相关系数无定义)。上表按 PDF 文字层逐字转录图中数值;两处正文数字均照原文翻译,未做订正。此外图中 GutenQA 底行&quot;语义&quot;标注为 0.23∗,与&quot;固定大小&quot;的 0.25∗ 接近,阅读时请以原图为准。</p>
+</blockquote>
+<p><strong>发现 1:嵌入前切分下,块大小与文档内效果中等相关,与语料库内效果仅弱相关。</strong></p>
+<p>如图 2 顶行所示,块大小与文档内检索呈中等正相关:段落 r = 0.57(p&lt;0.05)、句子 r = 0.52(p&lt;0.05)、命题 r = 0.41(p&lt;0.05)。相比之下,语料库内检索的相关性较弱(r = 0.08 至 0.18,尽管仍统计显著)。一种可能的解释:文档内检索中,更大的块更可能与相关信息重叠;而语料库内检索的文档级聚合(MaxP)降低了对单块大小的敏感性。</p>
+<p><strong>发现 2:上下文化切分削弱文档内检索的块大小相关性。</strong></p>
+<p>在上下文化切分下(中行),文档内检索的相关性减弱:段落从 r = 0.57 降至 0.44,句子从 0.52 降至 0.35,命题从 0.41 降至 0.40。这一衰减与上下文化切分通过纳入周围文档上下文补偿小块的机制一致。但相关性仍为正且多数显著,说明块大小仍在起作用。</p>
+<p><strong>发现 3:上下文化切分的收益不强烈依赖块大小。</strong></p>
+<p>底行显示块大小与上下文化切分相对改进(百分比)的相关性。语料库内检索中,所有相关性接近零(r = −0.09 至 0.03),说明收益(或损害)在各块大小上一致。文档内检索中模式混杂:句子呈负相关(r = −0.11),固定大小呈正相关(r = 0.23,p&lt;0.05)。这些方法特定模式的原因尚不清楚。</p>
+<p><strong>小结</strong>:块大小与文档内检索效果的关系强于与语料库内检索的关系。上下文化切分部分削弱了这一关系。对语料库内检索,弱相关性提示 RQ1 中的效果差异并非纯粹由块大小驱动,尽管块大小可能仍起次要作用。</p>
+<h2>5 结论</h2>
+<p>本研究复现并检验了面向稠密检索的文档切分策略,在语料库内与文档内两种检索任务上评估分割方法与嵌入范式。我们的发现表明,最优切分策略依赖于任务。语料库内检索中,结构化方法(段落、固定大小)一致优于 LLM 引导方法。文档内检索中,模式反转:LumberChunker 表现最佳,尤其在结构良好的文档上。上下文化切分改进了 LLM 引导方法在语料库内检索的效果,却在所有配置下损害文档内检索。我们将其归因于:上下化切分编码的是更宽泛的文档主题而非块特有细节,降低了同一文档内各块之间的可区分性。</p>
+<p>给从业者的建议:语料库内检索使用结构化方法;文档内检索使用 LumberChunker;上下文化切分仅用于语料库内任务。为便于后续研究,我们在(评审期间匿名的)地址公开我们的实现。</p>
+<h2>参考文献</h2>
+<ol>
+<li>Tong Chen, Hongwei Wang, Sihao Chen, Wenhao Yu, Kaixin Ma, Xinran Zhao, Hongming Zhang, Dong Yu. 2024. Dense X Retrieval:我们应当使用什么检索粒度?(Dense X Retrieval: What Retrieval Granularity Should We Use?). In <em>Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing</em>(EMNLP 2024). 15159–15177.</li>
+<li>Zhuyun Dai, Jamie Callan. 2019. 用上下文神经语言建模深化 IR 的文本理解(Deeper Text Understanding for IR with Contextual Neural Language Modeling). In <em>Proceedings of the 42nd International ACM SIGIR Conference</em>. 985–988.</li>
+<li>André V Duarte, João DS Marques, Miguel Graça, Miguel Freire, Lei Li, Arlindo L Oliveira. 2024. LumberChunker:长篇叙事文档分割(LumberChunker: Long-form Narrative Document Segmentation). In <em>Findings of the Association for Computational Linguistics: EMNLP 2024</em>. 6473–6486.</li>
+<li>Michael Günther, Louis Milliken, Jonathan Geuter, Georgios Mastrapas, Bo Wang, Han Xiao. 2023. Jina Embeddings:一组新的高性能句子嵌入模型(Jina Embeddings: A Novel Set of High-Performance Sentence Embedding Models). <em>arXiv:2307.11224</em>.</li>
+<li>Michael Günther, Isabelle Mohr, Daniel James Williams, Bo Wang, Han Xiao. 2024. 后期切分:使用长上下文嵌入模型的上下文块嵌入(Late Chunking: Contextual Chunk Embeddings Using Long-Context Embedding Models). <em>arXiv:2409.04701</em>.</li>
+<li>Greg Kamradt. 文本分割的层级(Levels of Text Splitting).(网络资料,原文引用未注年份)</li>
+<li>Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick SH Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, Wen-tau Yih. 2020. 面向开放域问答的稠密段落检索(Dense Passage Retrieval for Open-Domain Question Answering). In <em>EMNLP (1)</em>. 6769–6781.</li>
+<li>Yongqi Li, Xinyu Lin, Wenjie Wang, Fuli Feng, Liang Pang, Wenjie Li, Liqiang Nie, Xiangnan He, Tat-Seng Chua. 2024. 大语言模型时代的生成式搜索与推荐综述(A Survey of Generative Search and Recommendation in the Era of Large Language Models). <em>arXiv:2404.16924</em>.</li>
+<li>Zach Nussbaum, John X Morris, Brandon Duderstadt, Andriy Mulyar. 2024. Nomic Embed:训练可复现的长上下文文本嵌入器(Nomic Embed: Training a Reproducible Long Context Text Embedder). <em>arXiv:2402.01613</em>.</li>
+<li>David Rau, Shuai Wang, Hervé Déjean, Stéphane Clinchant, Jaap Kamps. 2025. 面向 RAG 高效答案生成的上下文嵌入(Context Embeddings for Efficient Answer Generation in Retrieval-Augmented Generation). In <em>Proceedings of the Eighteenth ACM International Conference on Web Search and Data Mining</em>(WSDM 2025). 493–502.</li>
+<li>Nandan Thakur, Nils Reimers, Andreas Rücklé, Abhishek Srivastava, Iryna Gurevych. 2021. BEIR:信息检索模型零样本评测的异构基准(BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models). In <em>Thirty-fifth Conference on Neural Information Processing Systems Datasets and Benchmarks Track (Round 2)</em>.</li>
+<li>Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Rangan Majumder, Furu Wei. 2024. 多语言 E5 文本嵌入:技术报告(Multilingual E5 Text Embeddings: A Technical Report). <em>arXiv:2402.05672</em>.</li>
+<li>Shuai Wang, Guido Zuccon. 2023. 面向有效稠密检索器的均衡主题感知采样:一项可复现性研究(Balanced Topic Aware Sampling for Effective Dense Retriever: A Reproducibility Study). In <em>Proceedings of the 46th International ACM SIGIR Conference</em>. 2542–2551.</li>
+<li>Guido Zuccon, Shengyao Zhuang, Xueguang Ma. 2025. R2LLMs:用 LLM 做检索与排序(R2LLMs: Retrieval and Ranking with LLMs). In <em>Proceedings of the 48th International ACM SIGIR Conference</em>. 4106–4109.</li>
+</ol>
+<h2>脚注</h2>
+<ol>
+<li>我们排除了 LumberChunker 论文中的 Recursive Chunking 与 HyDE,因为这些方法缺乏足以复现的实现细节。</li>
+<li>SemanticSplitterNodeParser。</li>
+<li>原 LumberChunker 研究使用 Gemini-1.0-Pro;该模型已弃用且无法经 API 访问,我们以 Gemini-2.5-Flash 替代。</li>
+<li>原研究的所有其他模型呈现相同趋势;因页数限制,结果见我们的代码库。</li>
+<li>原研究未指定库版本;我们使用 LlamaIndex 0.13.6。</li>
+<li>吞吐量以 SciDocs 文档估算。</li>
+<li>以 Jina-v3 分词器估算。</li>
+<li>评审期间匿名。</li>
+</ol>
+</main></body></html>
