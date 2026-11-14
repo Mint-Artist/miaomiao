@@ -5,7 +5,8 @@
 #   A. 网页文件（jsonl）：每行 {"url", "content", "markdown", "html"}，是谷歌结果网页的正文
 #   B. 排名文件：每行一条 (query, rank, url)；支持 jsonl（字段 query / rank / url）、tsv、csv（有无表头都行，无表头时按 query, rank, url 的列序）
 # 两份文件不需要互相拼接：
-#   - B 和抽样 query 文件（queries_sample1000_html.jsonl）按 query 文本对上 qid，生成新的 query 文件（标准答案 = 谷歌 top10，按名次排序）；
+#   - B 和原来全量的 query 文件（第 1 段的 QUERY_FILE，3000 多条）按 query 文本对上 qid，生成新的 query 文件
+#     （标准答案 = 谷歌 top10，按名次排序）；谷歌结果缺失的 query 不写入，评测时自然不计入；
 #   - A 作为新一批网页补入网页库（和之前补入 query 相关网页的流程完全相同），原有网页的块和向量不动。
 #
 # 流程（详见文末"运行"各段）：
@@ -70,12 +71,12 @@ def read_rank_file(path):
     return rows
 
 
-def build_google_queries(rank_path, sample_path, out_path, topn=10):
-    """排名文件 + 抽样 query 文件 → 新 query 文件：{"qid", "query", "relevant_urls"（谷歌名次顺序，去重后取前 topn）,
+def build_google_queries(rank_path, source_path, out_path, topn=10):
+    """排名文件 + 原 query 文件（全量） → 新 query 文件：{"qid", "query", "relevant_urls"（谷歌名次顺序，去重后取前 topn）,
     "rerank_urls"（原来的精排标准答案，仅供对照）}。按 query 文本（合并空白后）对上 qid。"""
-    sample = [json.loads(l) for l in _open(sample_path) if l.strip()]
+    source = [json.loads(l) for l in _open(source_path) if l.strip()]
     by_text = defaultdict(list)
-    for d in sample:
+    for d in source:
         by_text[_norm_q(d["query"])].append(d)
     dup = sum(1 for v in by_text.values() if len(v) > 1)
     groups = defaultdict(list)
@@ -101,8 +102,8 @@ def build_google_queries(rank_path, sample_path, out_path, topn=10):
                                    ensure_ascii=False) + "\n")
                 n_out += 1
     missing = len(set(by_text) - set(groups))
-    print(f"抽样 query {len(sample)} 条（文本重复 {dup} 组）；排名文件 query {len(groups)} 条")
-    print(f"写出 {n_out} 条 → {out_path}；排名文件里对不上抽样 query 的 {len(unmatched)} 条，抽样里没有谷歌结果的 {missing} 条，"
+    print(f"原 query {len(source)} 条（文本重复 {dup} 组）；排名文件 query {len(groups)} 条")
+    print(f"写出 {n_out} 条 → {out_path}；排名文件里对不上原 query 的 {len(unmatched)} 条，原 query 里没有谷歌结果的 {missing} 条，"
           f"谷歌结果不足 {topn} 个的 {short} 条")
     for qt in unmatched[:5]:
         print("  对不上：", qt[:60])
@@ -227,11 +228,12 @@ def report_html_only(hits, queries, baseline=None, keys=None, strict=(3, 5)):
 # %% 运行 1：预处理（只需运行一次；路径按实际修改）
 GOOGLE_RANK_FILE = "/path/to/google_rank.tsv"                       # 排名文件：query, rank, url
 GOOGLE_PAGES_FILE = "/path/to/google_pages.jsonl"                   # 网页文件：url, content, markdown, html
-SAMPLE_QUERY_FILE = os.path.join(OUT_ROOT, "queries_sample1000_html.jsonl")
+SOURCE_QUERY_FILE = QUERY_FILE                                      # 原来全量的 query 文件（3000 多条）；须在第 1 段把 QUERY_FILE 改成谷歌文件之前运行
+assert "google" not in os.path.basename(SOURCE_QUERY_FILE), "QUERY_FILE 已经指向谷歌文件了，请把 SOURCE_QUERY_FILE 改成原来全量 query 文件的路径"
 GOOGLE_QUERY_FILE = os.path.join(OUT_ROOT, "queries_google_top10.jsonl")
 GOOGLE_PAGES_DIR = "/path/to/google_pages_parts"                    # 新的空目录，存放切好的网页分片
 
-build_google_queries(GOOGLE_RANK_FILE, SAMPLE_QUERY_FILE, GOOGLE_QUERY_FILE, topn=10)
+build_google_queries(GOOGLE_RANK_FILE, SOURCE_QUERY_FILE, GOOGLE_QUERY_FILE, topn=10)
 GOOGLE_DATA_GLOB = prepare_google_pages(GOOGLE_PAGES_FILE, GOOGLE_PAGES_DIR)
 coverage_report(GOOGLE_QUERY_FILE, GOOGLE_DATA_GLOB)
 
@@ -242,5 +244,5 @@ coverage_report(GOOGLE_QUERY_FILE, GOOGLE_DATA_GLOB)
 #   RUN_METHODS = ["content_br", "md_struct", "html_struct"]
 # 然后用任务队列增量推理：bash run_embed_job_multigpu.sh content_br md_struct html_struct（已完成的分片自动跳过）
 
-# %% 运行 3：评测（第 1 段改 QUERY_FILE = GOOGLE_QUERY_FILE 的值，运行第 10、12、13、14 段，再运行 query_sample.py 的"定义"段，然后运行这里）
+# %% 运行 3：评测（第 1 段改 QUERY_FILE = GOOGLE_QUERY_FILE 的值，运行第 10、12、13、14 段，再运行 query_sample.py 的"定义"段（只用它的 html 过滤函数，不抽样），然后运行这里）
 report_html_only(hits, queries)
