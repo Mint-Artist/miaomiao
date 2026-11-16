@@ -225,43 +225,6 @@ def report_html_only(hits, queries, baseline=None, keys=None, strict=(3, 5)):
         print(pd.DataFrame(tab).to_string(index=False))
 
 
-def data_sanity_check(query_path, ggl_glob, methods=None, n_show=3, seed=0):
-    """检查谷歌数据有没有给错（不改任何文件）：
-    1. qid 对应：谷歌前 10 与原精排答案（rerank_urls）的重合个数分布；几乎全为 0 说明 query 与 qid 对错了；
-    2. 网页正文：字数分位数、疑似拦截页、html 为空的数量；
-    3. 完成情况：各方法 ggl- 分片的切分 / 向量完成数（应相同且等于分片数）；
-    4. 抽几条 query，打印谷歌前 5 的网址和正文开头，人工看是否对得上。"""
-    import random
-    import re
-    from collections import Counter
-    methods = methods or RUN_METHODS
-    G = [json.loads(l) for l in open(query_path, encoding="utf-8") if l.strip()]
-    ov = [len({norm_url(u) for u in d["relevant_urls"]} & {norm_url(u) for u in d.get("rerank_urls", [])})
-          for d in G if d.get("rerank_urls")]
-    print("【1】与原精排答案的重合个数分布：", sorted(Counter(ov).items()), " 平均", round(sum(ov) / max(len(ov), 1), 2))
-
-    parts = sorted(glob.glob(ggl_glob))
-    recs = [r for p in parts for r in iter_records(p)]
-    lens = sorted(len(r.get("content") or "") for r in recs)
-    junk = re.compile("验证码|安全验证|访问受限|Access Denied|captcha|403 Forbidden|开启JavaScript|正在检查|请稍候")
-    q = [lens[min(int(len(lens) * x), len(lens) - 1)] for x in (0.1, 0.5, 0.9)] if lens else []
-    print(f"【2】谷歌网页 {len(recs)} 个（分片 {len(parts)} 个）；content 字数 10%/50%/90% 分位：{q}；"
-          f"疑似拦截页 {sum(bool(junk.search((r.get('content') or '')[:300])) for r in recs)}；"
-          f"html 为空 {sum(not (r.get('html') or '').strip() for r in recs)}")
-
-    for m in methods:
-        print(f"【3】{m:18s} ggl 分片：切分完成 {len(glob.glob(os.path.join(OUT_ROOT, m, 'chunks', 'ggl-*.done')))} 个，"
-              f"向量完成 {len(glob.glob(os.path.join(OUT_ROOT, m, 'emb', 'ggl-*.done')))} 个（分片共 {len(parts)} 个）")
-
-    page = {norm_url(r.get("url") or ""): r for r in recs}
-    for d in random.Random(seed).sample(G, min(n_show, len(G))):
-        print("\n【4】query：", d["query"])
-        for u in d["relevant_urls"][:5]:
-            r = page.get(norm_url(u))
-            txt = (r.get("content") or "")[:60].replace("<br>", " ") if r else "（网页文件里没有）"
-            print("   ", u[:70], "|", txt)
-
-
 # %% 运行 1：预处理（只需运行一次；路径按实际修改）
 GOOGLE_RANK_FILE = "/path/to/google_rank.tsv"                       # 排名文件：query, rank, url
 GOOGLE_PAGES_FILE = "/path/to/google_pages.jsonl"                   # 网页文件：url, content, markdown, html
@@ -283,8 +246,3 @@ coverage_report(GOOGLE_QUERY_FILE, GOOGLE_DATA_GLOB)
 
 # %% 运行 3：评测（第 1 段改 QUERY_FILE = GOOGLE_QUERY_FILE 的值，运行第 10、12、13、14 段，再运行 query_sample.py 的"定义"段（只用它的 html 过滤函数，不抽样），然后运行这里）
 report_html_only(hits, queries)
-
-# %% 运行 4（可选）：检查谷歌数据有没有给错（随时可运行，不改任何文件；路径按实际修改）
-# 判断：【1】相当一部分 query 有 ≥1 个重合为正常，几乎全为 0 说明 qid 对错；【2】字数中位数几百字以上、拦截页很少为正常；
-#       【3】各方法切分数 = 向量数 = 分片数；【4】正文与 query 相关，"网页文件里没有"很多说明谷歌网页抓取覆盖不全。
-data_sanity_check(QUERY_FILE, "/path/to/google_pages_parts/part-*")
