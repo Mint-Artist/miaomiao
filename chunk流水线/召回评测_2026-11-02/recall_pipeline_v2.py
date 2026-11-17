@@ -1229,8 +1229,16 @@ def judged_metrics(pool_path: str, judgments: dict, methods, depth: int = 10, go
 
 
 # 只看有 html 的网页（原 query_sample.py / google_gt.py 中的同名函数）
-def html_ok_urls(hits, method="html_struct"):
-    """库里 html_struct 至少切出 1 块的网页（归一化 url 集合），作为"有 html"的判定。"""
+def html_ok_urls(hits, method=None):
+    """库里某个 html 方法至少切出 1 块的网页（归一化 url 集合），作为"有 html"的判定。
+    method 不传时优先用 html_struct，RUN_METHODS 里没有它时退到 html_struct_secmerge_t512 或其他 html_* 方法。"""
+    if method is None:
+        cands = [m for m in ("html_struct", "html_struct_secmerge_t512") if m in hits]
+        cands = cands or [m for m in hits if m.startswith("html")]
+        if not cands:
+            raise KeyError(f"RUN_METHODS 里没有 html 方法，无法判定哪些网页有 html：{list(hits)}")
+        method = cands[0]
+    print(f"[html 判定] 使用 {method}")
     idx = hits[method][0]
     ok = set()
     for p, name in enumerate(idx.names):
