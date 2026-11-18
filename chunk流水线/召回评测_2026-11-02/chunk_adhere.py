@@ -13,10 +13,14 @@
 # 类标题行（para 单元，去首尾空白后 ≤ 40 字）：
 #   - 编号标题：以编号开头且不以句末标点结尾。编号：1、 1. 1． 1) 1）（"1." 后紧跟数字不算，如 1.5 亿）、
 #               (1) （1）、一、 （一）、第一章 / 第二节 / 第3步 / 第三部分、①–⑳、Step 1 / 步骤 1
-#   - 引导句：以 ： 或 : 结尾，如"具体操作步骤如下："
+#               以冒号结尾但带编号的（"1、准备工作："）也算编号标题
+#   - 引导句：不带编号、以 ： 或 : 结尾，如"具体操作步骤如下：" —— 实测效果不好，默认关闭（ADH_LEAD_IN = False）
 # 保护条件（满足任一条就不挪）：
-#   - 末尾连续类标题行超过 2 行（更像列表）
+#   - 末尾连续类标题行超过 4 行
+#   - 末尾这几行里同一种编号样式出现 ≥ 2 次（"8、条目8 / 9、条目9"更像列表）；
+#     不同样式叠在一起（"一、xxx / （一）yyy / 1、物理类"）是标题链，照常挪
 #   - 下一段本身也是编号标题，且块尾最后一行也是编号标题（短条目列表，切在哪都一样）；块尾是引导句时照常吸附
+#   - 挪过去后下一块（类标题行 + 表头 + 下一段）会超过硬上限 HARD
 #   - 挪走后上一块剩下不到 MIN_LEN 字 → 不拆，整块并入下一块（否则剩下的部分会被 MIN_LEN 过滤掉）
 # 并入表格块时顺序为：类标题行 → 表头 → 表格行。content_br 基线不受影响。
 #
@@ -32,31 +36,46 @@ import numpy as np
 from tqdm.auto import tqdm
 
 ADH_MAX_LEN = 40      # 类标题行最长字数
-ADH_MAX_LINES = 2     # 块尾最多挪几行
+ADH_MAX_LINES = 4     # 块尾最多挪几行（标题链如"一、xxx / （一）yyy / 1、物理类"是 3 行）
+ADH_LEAD_IN = False   # 不带编号、以冒号结尾的引导句（"具体步骤如下："）是否参与吸附；实测效果不好，默认关闭
 
-_TITLE_RE = re.compile(
-    r"^(?:\d{1,2}(?:[、)）]|[.．](?!\d))"
-    r"|[（(]\d{1,2}[)）]"
-    r"|[一二三四五六七八九十]{1,3}[、.．]"
-    r"|[（(][一二三四五六七八九十]{1,3}[)）]"
-    r"|第[一二三四五六七八九十百零\d]{1,3}[章节部分条步篇讲课]"
-    r"|[①-⑳]"
-    r"|(?:step|步骤)\s*\d{1,2})",
-    re.I,
-)
+# 编号样式：同一样式在块尾连续出现 ≥ 2 次 → 更像列表（1、苹果 / 2、香蕉），不挪；不同样式叠在一起是标题链，照常挪
+_STYLES = [
+    ("数字", re.compile(r"^\d{1,2}(?:[、)）]|[.．](?!\d))")),
+    ("括号数字", re.compile(r"^[（(]\d{1,2}[)）]")),
+    ("中文数字", re.compile(r"^[一二三四五六七八九十]{1,3}[、.．]")),
+    ("括号中文数字", re.compile(r"^[（(][一二三四五六七八九十]{1,3}[)）]")),
+    ("第X", re.compile(r"^第[一二三四五六七八九十百零\d]{1,3}[章节部分条步篇讲课]")),
+    ("圈号", re.compile(r"^[①-⑳]")),
+    ("步骤", re.compile(r"^(?:step|步骤)\s*\d{1,2}", re.I)),
+]
 _NOT_TITLE_END = set("。！？!?；;，,、…")
 
 
+def num_style(text):
+    t = text.strip()
+    return next((name for name, p in _STYLES if p.match(t)), None)
+
+
 def title_like(text):
-    """类标题行返回 "编号标题" / "引导句"，否则 None。"""
+    """类标题行返回 "编号标题" / "引导句"，否则 None。
+    以冒号结尾的行：带编号（如"1、准备工作："）仍算编号标题；不带编号的引导句只在 ADH_LEAD_IN=True 时算。"""
     t = text.strip()
     if not t or len(t) > ADH_MAX_LEN:
         return None
     if t[-1] in "：:":
-        return "引导句"
+        if num_style(t):
+            return "编号标题"
+        return "引导句" if ADH_LEAD_IN else None
     if t[-1] in _NOT_TITLE_END:
         return None
-    return "编号标题" if _TITLE_RE.match(t) else None
+    return "编号标题" if num_style(t) else None
+
+
+def _tl_info(text):
+    """(类型, 编号样式) 或 None；打包时逐段记录。"""
+    k = title_like(text)
+    return (k, num_style(text) if k == "编号标题" else None) if k else None
 
 
 def chunk_struct_sections_adh(atoms, soft=SOFT, hard=HARD, table_soft=TABLE_SOFT, adhere=True, stats=None):
@@ -86,7 +105,7 @@ def chunk_struct_sections_adh(atoms, soft=SOFT, hard=HARD, table_soft=TABLE_SOFT
         whole = len(a.text) <= hard
         pieces = [a.text] if whole else split_long(a.text, lim)
         for piece in pieces:
-            piece_tl = title_like(piece) if a.kind == "para" and whole else None
+            piece_tl = _tl_info(piece) if a.kind == "para" and whole else None
             size = sum(len(x) for x in cur) + len(cur)
             carry, inherit = [], None
             if cur and (family != cur_family or size + len(piece) > lim):
@@ -94,12 +113,22 @@ def chunk_struct_sections_adh(atoms, soft=SOFT, hard=HARD, table_soft=TABLE_SOFT
                 if adhere:
                     while k < len(cur_tl) and cur_tl[-1 - k]:
                         k += 1
+                    styles = Counter(s for _, s in cur_tl[len(cur_tl) - k:] if s) if k else Counter()
                     if k > ADH_MAX_LINES:
                         st["跳过：块尾连续类标题行超过上限"] += 1
                         k = 0
-                    elif k and piece_tl == "编号标题" and cur_tl[-1] == "编号标题":
+                    elif styles and max(styles.values()) >= 2:
+                        st["跳过：块尾同一编号样式出现多次（像列表）"] += 1
+                        k = 0
+                    elif k and piece_tl and piece_tl[0] == "编号标题" and cur_tl[-1][0] == "编号标题":
                         st["跳过：下一段也是编号标题"] += 1
                         k = 0
+                    if k:  # 挪过去后下一块（标题行 + 表头 + 这一段）不能超过硬上限
+                        moved = cur if sum(len(x) for x in cur[:-k]) < MIN_LEN else cur[-k:]
+                        head = len(a.header) + 1 if a.kind == "row" and a.header else 0
+                        if sum(len(x) + 1 for x in moved) + head + len(piece) > hard:
+                            st["跳过：挪过去会超过硬上限"] += 1
+                            k = 0
                 if k:
                     st["吸附涉及行数"] += k
                     if sum(len(x) for x in cur[:-k]) < MIN_LEN:  # 剩下的太短：整块并入下一块
@@ -241,26 +270,44 @@ def find_record(url, parts=None):
     raise KeyError(f"没找到：{url}")
 
 
-def compare_page(rec, which="html", full=False, only_changed=False):
-    """单个网页：吸附前后的块数、块长，标出块尾悬空的类标题行。
+def _content_tail_title(c, titles):
+    """content_br 的块是 <br> 段落裸拼接（没有换行），用"块是否以某个类标题段落结尾"判断悬空。"""
+    return next((t for t in titles if c.endswith(t)), None)
+
+
+def compare_page(rec, which="html", full=False, only_changed=False, with_content=True):
+    """单个网页：线上 content_br 切法 + 结构切分吸附前后，块数、块长，标出块尾悬空的类标题行。
     full=True：打印每块完整内容（保留换行）；默认只打印每块前 30 字的一行摘要。
-    only_changed=True：只打印吸附前后内容不同的块（配合 full=True，长网页时不至于刷屏）。"""
+    only_changed=True：结构切分只打印吸附前后内容不同的块（content_br 不受影响，总是全部打印）。
+    with_content=False：不打印 content_br（同一网页先看 html 再看 md 时，第二次可以关掉）。"""
+    def show(title, chunks, tail_title, skip=()):
+        n_dang = sum(1 for c in chunks[:-1] if tail_title(c))
+        print(f"\n{title}：{len(chunks)} 块，悬空类标题行 {n_dang} 个")
+        for j, c in enumerate(chunks):
+            if c in skip:
+                continue
+            t = tail_title(c) if j < len(chunks) - 1 else None
+            mark = f"  ← 块尾悬空：{t[:30]!r}" if t else ""
+            n = len(c.replace("\n", ""))
+            if full:
+                print(f"\n----- 第 {j} 块，{n} 字{mark} -----")
+                print(c)
+            else:
+                print(f"  {j:3d} {n:4d}字  {c[:30]!r}{mark}")
+
+    if with_content:
+        ctt = rec.get("content") or ""
+        titles = sorted({s.strip() for s in ctt.split("<br>") if title_like(s)}, key=len, reverse=True)
+        show("[content_br] 线上切法（<br> 段落裸拼接，块内没有换行）", split(ctt),
+             lambda c: _content_tail_title(c, titles))
+
     atoms = parse_html(rec.get("html") or "") if which == "html" else parse_markdown(rec.get("markdown") or "")
     st = Counter()
     old = chunk_secmerge_t(atoms, SOFT, HARD, TABLE_SOFT)
     new = chunk_secmerge_adh(atoms, stats=st)
-    for name, chunks, other in (("吸附前", old, set(new)), ("吸附后", new, set(old))):
-        print(f"\n[{which}] {name}：{len(chunks)} 块，悬空类标题行 {dangling(chunks)} 个")
-        for j, c in enumerate(chunks):
-            if only_changed and c in other:
-                continue
-            tail = c.rsplit("\n", 1)[-1]
-            mark = f"  ← 块尾悬空：{tail[:30]!r}" if j < len(chunks) - 1 and title_like(tail) else ""
-            if full:
-                print(f"\n----- 第 {j} 块，{len(c.replace(chr(10), ''))} 字{mark} -----")
-                print(c)
-            else:
-                print(f"  {j:3d} {len(c.replace(chr(10), '')):4d}字  {c[:30]!r}{mark}")
+    last_line = lambda c: c.rsplit("\n", 1)[-1] if title_like(c.rsplit("\n", 1)[-1]) else None
+    show(f"[{which}] 结构切分·吸附前", old, last_line, set(new) if only_changed else ())
+    show(f"[{which}] 结构切分·吸附后", new, last_line, set(old) if only_changed else ())
     print("\n吸附记录：", dict(st))
 
 
@@ -273,10 +320,10 @@ show_adhere_examples(ADH_EXAMPLES, n=20)
 # %% 单个网页（填 url；知道所在分片时 find_record(URL, parts=[分片路径]) 会快很多）
 URL = "这里填那个网页的 url"
 rec = find_record(URL)
-compare_page(rec, "html")                                      # 摘要：每块一行
-compare_page(rec, "html", full=True, only_changed=True)        # 完整内容：只看吸附前后有变化的块
-# compare_page(rec, "html", full=True)                         # 完整内容：全部块
-compare_page(rec, "md")
+compare_page(rec, "html")                                      # 摘要：content_br + html 吸附前后，每块一行
+compare_page(rec, "html", full=True)                           # 完整内容：content_br 与 html 吸附前后的全部块
+# compare_page(rec, "html", full=True, only_changed=True)      # 完整内容：html 只看吸附前后有变化的块
+compare_page(rec, "md", with_content=False)                    # md 吸附前后（content_br 上面已经打印过）
 
 # %% 切分：确认样例没问题后再运行（三批数据都切，按 content_br 对齐文档；已切完的分片自动跳过）
 # 需要先运行 v2 第 9 段的定义（第 9 段末尾的 run_all_sources() 对已切完的方法会直接跳过）。

@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>切分对比查看器</title>
+<style>
+:root{--bg:#f6f6f3;--panel:#fff;--fg:#1c1c1a;--muted:#6b6a64;--line:#e2e1da;--accent:#2f6fde;--gold:#1d8f58;--goldbg:#e7f5ec;--same:#fff1c2;--bad:#c94040;--badbg:#fbeaea;--warn:#b25e09;--warnbg:#fdf0e1;--chip:#efeee8;--shadow:0 1px 2px rgba(0,0,0,.05);--pin:#e8590c;--pinbg:rgba(232,89,12,.09)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#151514;--panel:#1e1e1c;--fg:#ebeae4;--muted:#9f9d95;--line:#34332e;--accent:#79a3f2;--gold:#45c98b;--goldbg:#16301f;--same:#433a1a;--bad:#ec6d6d;--badbg:#3a1d1d;--warn:#f0a35a;--warnbg:#3a2a16;--chip:#2a2a26;--shadow:none;--pin:#ff922b;--pinbg:rgba(255,146,43,.13)}}
+:root[data-theme="dark"]{--bg:#151514;--panel:#1e1e1c;--fg:#ebeae4;--muted:#9f9d95;--line:#34332e;--accent:#79a3f2;--gold:#45c98b;--goldbg:#16301f;--same:#433a1a;--bad:#ec6d6d;--badbg:#3a1d1d;--warn:#f0a35a;--warnbg:#3a2a16;--chip:#2a2a26;--shadow:none;--pin:#ff922b;--pinbg:rgba(255,146,43,.13)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+button,select,input{font:inherit;color:inherit}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:16px;margin:0;font-weight:600}
+.meta{color:var(--muted);font-size:12.5px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:4px 10px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#app{display:grid;grid-template-columns:320px 1fr;height:calc(100% - 53px)}
+#side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.filters{padding:10px;display:grid;gap:6px;border-bottom:1px solid var(--line)}
+.filters input,.filters select{width:100%;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.row{display:flex;gap:6px;align-items:center}.row>*{flex:1;min-width:0}
+.lbl{font-size:12px;color:var(--muted)}
+#count{font-size:12px;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line)}
+#count div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#list{overflow:auto;flex:1}
+.qi{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.qi:hover{background:var(--bg)}.qi.on{background:var(--same)}
+.qi .qt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+.qi .qm{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;font-size:11.5px;color:var(--muted)}
+.dot{display:inline-flex;align-items:center;gap:3px;padding:0 5px;border-radius:9px;background:var(--chip)}
+#main{overflow:auto;padding:14px 16px;min-width:0}
+.empty{color:var(--muted);padding:40px 10px;text-align:center}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:40px 16px;text-align:center;color:var(--muted);margin:20px auto;max-width:640px}
+.drop.over{border-color:var(--accent);color:var(--accent)}
+.qhead h2{font-size:16px;margin:0 0 4px;word-break:break-all}
+.qhead .meta{margin-bottom:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+.box{padding:8px 12px;margin-bottom:12px;overflow:auto}
+.box h3{font-size:13px;margin:0 0 6px;color:var(--muted);font-weight:600}
+.box summary{cursor:pointer;font-size:13px;color:var(--muted);font-weight:600}
+table{border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{padding:3px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td.best{color:var(--gold);font-weight:600}
+td.worst{color:var(--bad)}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{padding:0 6px;border-radius:9px;background:var(--chip);font-size:11.5px;white-space:nowrap}
+.chip.k{color:var(--accent)}
+.chip.w{color:var(--warn);background:var(--warnbg)}
+.chip.b{color:var(--bad);background:var(--badbg)}
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+.cols{display:grid;grid-template-columns:repeat(var(--n),minmax(300px,1fr));gap:12px;align-items:start}
+.col{min-width:0}
+.col h3{font-size:14px;margin:0 0 8px;display:flex;justify-content:space-between;gap:8px;position:sticky;top:-14px;background:var(--bg);padding:6px 0;z-index:1}
+.ck{padding:8px 10px;margin-bottom:8px;border-left:4px solid transparent}
+.ck.dg{border-left-color:var(--bad)}
+.ck.same{outline:2px solid var(--accent);outline-offset:-1px}
+.ck.pin{outline:3px solid var(--pin);outline-offset:-2px;box-shadow:inset 0 0 0 9999px var(--pinbg)}
+.ck .h{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:12px;color:var(--muted);align-items:center;margin-bottom:2px}
+.ck .h b{color:var(--fg)}
+.t{white-space:pre-wrap;word-break:break-word;font-size:13px;max-height:9.6em;overflow:hidden}
+.t.open{max-height:none}
+.more{font-size:12px;color:var(--accent);cursor:pointer;background:none;border:0;padding:0}
+.units{display:grid;grid-template-columns:auto auto auto minmax(0,1fr);gap:1px 10px;font-size:12.5px}
+.units .p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.src{white-space:pre-wrap;word-break:break-all;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:480px;overflow:auto;margin:6px 0 0}
+iframe.render{width:100%;height:480px;border:1px solid var(--line);border-radius:6px;background:#fff;margin-top:6px}
+.err{color:var(--bad);white-space:pre-wrap}
+@media (max-width:820px){#app{grid-template-columns:1fr;height:auto}#side{max-height:45vh;border-right:0;border-bottom:1px solid var(--line)}.cols{grid-template-columns:minmax(0,1fr)}#main{padding:12px 16px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>切分对比查看器</h1>
+  <label class="btn">选择文件<input id="file" type="file" accept=".jsonl,.gz,.json" hidden></label>
+  <span id="fmeta" class="meta">支持 chunk_compare_export.py 导出的 .jsonl / .jsonl.gz；数据只在本地浏览器读取，不会上传</span>
+  <span style="flex:1"></span>
+  <button class="btn" id="theme" title="切换深色 / 浅色">◐</button>
+</header>
+<div id="app">
+  <aside id="side">
+    <div class="filters">
+      <input id="q" placeholder="搜索 url">
+      <div class="row"><select id="struct"><option value="">全部网页</option><option value="table">含表格</option><option value="list">含列表</option><option value="note">含提示框</option><option value="none">不含容器</option></select>
+        <select id="sort"><option value="">原顺序</option><option value="dn">块数差别大的在前</option><option value="dc">完整率提升大的在前</option><option value="dm">混装减少多的在前</option></select></div>
+      <div class="lbl">对比筛选（左边方法 相对 右边方法）</div>
+      <div class="row"><select id="ma"></select><select id="cmp"><option value="">不筛选</option><option value="diff">切法不同</option><option value="more">块更多</option><option value="less">块更少</option><option value="cup">完整率更高</option><option value="cdown">完整率更低</option><option value="mless">混装更少</option></select><select id="mb"></select></div>
+    </div>
+    <div id="count"></div>
+    <div id="list"></div>
+  </aside>
+  <main id="main"><div class="drop" id="drop">把 chunk_compare_export.py 导出的文件拖到这里，或点左上角"选择文件"<br><span class="meta">也可以用 ?data=文件地址 打开（需通过 http 访问本页面）</span></div></main>
+</div>
+<script>
+"use strict";
+const S = {meta: null, pages: [], shown: [], cur: -1, hidden: new Set(), pinK: null, hoverK: null, cache: new Map(), panel: ""};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const safeHref = u => /^https?:\/\//i.test(u || "") ? esc(u) : "";
+const shortUrl = u => String(u || "").replace(/^https?:\/\/(www\.)?/i, "");
+const LABEL = {"content_br": "content_br（线上）", "html_struct_secmerge_t512": "原结构切分", "html_container": "容器级结构切分",
+  "html_struct_secmerge_t512_adh": "原结构切分 + 吸附", "md_struct_secmerge_t512": "md 结构切分", "md_struct_secmerge_t512_adh": "md 结构切分 + 吸附"};
+const lab = m => LABEL[m] || m;
+const KIND = {para: "段落", list: "列表", table: "表格", note: "提示框", metadata: "元信息", quote: "引用", code: "代码", figure: "图", heading: "标题"};
+const CONT = ["list", "table", "note", "metadata", "quote", "code", "figure"];
+
+try { const t = localStorage.getItem("rv-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+$("theme").onclick = () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+  const nxt = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = nxt;
+  try { localStorage.setItem("rv-theme", nxt); } catch (e) {}
+};
+
+async function readText(blobOrResp, name) {
+  if (/\.gz$/i.test(name)) {
+    if (typeof DecompressionStream === "undefined") throw new Error("当前浏览器不支持解压 .gz，请先解压成 .jsonl 再打开");
+    const body = blobOrResp.body || blobOrResp.stream();
+    return await new Response(body.pipeThrough(new DecompressionStream("gzip"))).text();
+  }
+  return await blobOrResp.text();
+}
+
+function load(text, name) {
+  const meta = [], pages = [];
+  let bad = 0;
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    let d;
+    try { d = JSON.parse(line); } catch (e) { bad++; continue; }
+    if (d.type === "meta") meta.push(d); else if (d.type === "page") pages.push(d);
+  }
+  if (!meta.length || !pages.length) throw new Error("文件里没有找到切分对比数据（需要 chunk_compare_export.py 导出的文件）");
+  S.meta = meta[0]; S.pages = pages; S.cur = -1; S.hidden = new Set(); S.cache = new Map();
+  const m = S.meta.methods;
+  for (const id of ["ma", "mb"]) $(id).innerHTML = m.map(x => `<option value="${esc(x)}">${esc(lab(x))}</option>`).join("");
+  $("ma").value = m.includes("html_container") ? "html_container" : m[m.length - 1];
+  $("mb").value = S.meta.baseline && m.includes(S.meta.baseline) ? S.meta.baseline : m[0];
+  const p = S.meta.params || {};
+  $("fmeta").textContent = `${name} · ${pages.length} 个网页 · 方法 ${m.map(lab).join(" / ")} · 软上限 ${p.SOFT ?? "—"}，容器上限 ${p.CT_HARD ?? "—"}，拆分目标 ${p.CT_SPLIT ?? "—"} · 生成于 ${S.meta.created || "—"}` + (bad ? ` · 跳过坏行 ${bad}` : "");
+  renderList();
+  const want = decodeURIComponent(location.hash.slice(1));
+  const i = want ? S.pages.findIndex(q => q.url === want) : -1;
+  select(i >= 0 ? i : (S.shown[0] ?? -1));
+}
+
+async function openFile(f) {
+  try { $("fmeta").textContent = `读取 ${f.name} …`; load(await readText(f, f.name), f.name); }
+  catch (e) { showErr(e); }
+}
+function showErr(e) { $("main").innerHTML = `<div class="card box"><div class="err">${esc(e.message || e)}</div></div>`; $("fmeta").textContent = "加载失败"; }
+
+$("file").onchange = e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; };
+for (const ev of ["dragover", "dragenter"]) document.addEventListener(ev, e => { e.preventDefault(); $("drop")?.classList.add("over"); });
+document.addEventListener("dragleave", () => $("drop")?.classList.remove("over"));
+document.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) openFile(f); });
+
+const st = (p, m) => p.methods[m]?.stats || {};
+const rate = (p, m) => { const s = st(p, m); return s.eligible ? s.complete / s.eligible : null; };
+const sig = (p, m) => (p.methods[m]?.chunks || []).map(c => c.text.replace(/\s+/g, "")).join("\u0001");
+const kinds = p => new Set((p.structure || []).map(u => u.kind));
+
+function renderList() {
+  const kw = $("q").value.trim().toLowerCase(), sk = $("struct").value, so = $("sort").value;
+  const ma = $("ma").value, mb = $("mb").value, cmp = $("cmp").value;
+  let shown = [];
+  S.pages.forEach((p, i) => {
+    if (kw && !String(p.url || "").toLowerCase().includes(kw)) return;
+    const ks = kinds(p);
+    if (sk === "none" ? CONT.some(k => ks.has(k)) : sk && !ks.has(sk)) return;
+    if (cmp) {
+      const a = st(p, ma), b = st(p, mb), ra = rate(p, ma), rb = rate(p, mb);
+      if (cmp === "diff" && sig(p, ma) === sig(p, mb)) return;
+      if (cmp === "more" && !(a.n > b.n)) return;
+      if (cmp === "less" && !(a.n < b.n)) return;
+      if (cmp === "cup" && !(ra != null && rb != null && ra > rb)) return;
+      if (cmp === "cdown" && !(ra != null && rb != null && ra < rb)) return;
+      if (cmp === "mless" && !(a.mixed < b.mixed)) return;
+    }
+    shown.push(i);
+  });
+  const key = {dn: i => -Math.abs((st(S.pages[i], ma).n || 0) - (st(S.pages[i], mb).n || 0)),
+               dc: i => -((rate(S.pages[i], ma) ?? 0) - (rate(S.pages[i], mb) ?? 0)),
+               dm: i => -((st(S.pages[i], mb).mixed || 0) - (st(S.pages[i], ma).mixed || 0))}[so];
+  if (key) shown = shown.map(i => [key(i), i]).sort((x, y) => x[0] - y[0] || x[1] - y[1]).map(x => x[1]);
+  S.shown = shown;
+  const ms = S.meta.methods;
+  const agg = m => {
+    let n = 0, len = 0, c = 0, e = 0, mix = 0, o = 0;
+    for (const i of shown) { const s = st(S.pages[i], m); n += s.n || 0; len += (s.avg || 0) * (s.n || 0); c += s.complete || 0; e += s.eligible || 0; mix += s.mixed || 0; o += s.over512 || 0; }
+    const k = shown.length || 1;
+    return `${esc(lab(m))}：${(n / k).toFixed(1)} 块/页 · 均长 ${n ? (len / n).toFixed(0) : "—"} · 完整率 ${e ? (100 * c / e).toFixed(1) + "%" : "—"} · 混装 ${n ? (100 * mix / n).toFixed(1) + "%" : "—"} · >512 ${n ? (100 * o / n).toFixed(1) + "%" : "—"}`;
+  };
+  $("count").innerHTML = `<div>显示 ${shown.length} / ${S.pages.length} 个网页</div>` + ms.map(m => `<div title="${esc(agg(m))}">${agg(m)}</div>`).join("");
+  $("list").innerHTML = shown.map(i => {
+    const p = S.pages[i];
+    const dots = ms.map(m => `<span class="dot">${esc(lab(m))} ${st(p, m).n ?? "—"} 块</span>`).join("");
+    const ks = [...kinds(p)].filter(k => CONT.includes(k)).map(k => KIND[k] || k).join("·");
+    return `<div class="qi${i === S.cur ? " on" : ""}" data-i="${i}"><div class="qt">${esc(shortUrl(p.url))}</div><div class="qm">${ks ? `<span>${esc(ks)}</span>` : ""}${dots}</div></div>`;
+  }).join("");
+}
+$("list").onclick = e => { const el = e.target.closest(".qi"); if (el) select(+el.dataset.i); };
+for (const id of ["q", "struct", "sort", "ma", "mb", "cmp"]) $(id).addEventListener(id === "q" ? "input" : "change", () => renderList());
+
+function select(i) {
+  if (i == null || i < 0 || !S.pages[i]) { $("main").innerHTML = `<div class="empty">没有符合条件的网页</div>`; return; }
+  S.cur = i; S.pinK = null; S.cache = new Map();
+  document.querySelectorAll(".qi").forEach(el => el.classList.toggle("on", +el.dataset.i === i));
+  const el = document.querySelector(`.qi[data-i="${i}"]`); if (el) el.scrollIntoView({block: "nearest"});
+  history.replaceState(null, "", "#" + encodeURIComponent(S.pages[i].url || ""));
+  renderMain();
+}
+
+function statTable(p, ms) {
+  const cols = [["n", "块数"], ["avg", "平均字数"], ["max", "最长"], ["over512", ">512 字"], ["short64", "<64 字"], ["mixed", "混装块"], ["rate", "容器完整"], ["dangling", "块尾悬空标题"]];
+  const v = (m, k) => k === "rate" ? rate(p, m) : st(p, m)[k];
+  const better = {mixed: "low", dangling: "low", rate: "high"};
+  const ext = {};
+  for (const [k] of cols) if (better[k]) { const xs = ms.map(m => v(m, k)).filter(x => x != null); if (xs.length > 1 && Math.min(...xs) !== Math.max(...xs)) ext[k] = [Math.min(...xs), Math.max(...xs)]; }
+  const cell = (m, k) => {
+    const x = v(m, k), s = st(p, m);
+    const txt = x == null ? "—" : k === "rate" ? `${s.complete}/${s.eligible}` : k === "avg" ? x.toFixed(0) : x;
+    let cls = "";
+    if (ext[k] && x != null) { const [lo, hi] = ext[k]; const good = better[k] === "low" ? lo : hi, bad = better[k] === "low" ? hi : lo; cls = x === good ? "best" : x === bad ? "worst" : ""; }
+    return `<td class="${cls}">${txt}</td>`;
+  };
+  return `<table><tr><th>方法</th>${cols.map(c => `<th>${c[1]}</th>`).join("")}</tr>${ms.map(m => `<tr><td>${esc(lab(m))}${p.methods[m]?.error ? ` <span class="chip b" title="${esc(p.methods[m].error)}">出错</span>` : ""}</td>${cols.map(([k]) => cell(m, k)).join("")}</tr>`).join("")}</table>`;
+}
+
+function unitsHtml(p) {
+  const us = p.structure || [];
+  if (!us.length) return `<div class="meta">html 为空或没有解析出结构单元</div>`;
+  return `<div class="units">${us.map(u => `<span class="chip k">${esc(KIND[u.kind] || u.kind)}${u.kind === "heading" ? " h" + u.level : ""}</span><span class="meta">${u.n} 项</span><span class="meta">${u.len} 字</span><span class="p" title="${esc(u.text)}">${esc(u.text)}</span>`).join("")}</div>`;
+}
+
+function srcHtml(p) {
+  if (p.html == null) return `<div class="meta">导出时没有带 html（HTML_MAX = 0）</div>`;
+  const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">`;
+  const tr = p.html_truncated ? `<div class="meta">html 过长，只导出了前 ${p.html.length} 字</div>` : "";
+  return `${tr}<div class="toolbar" style="margin:6px 0 0"><button class="btn ${S.panel === "src" ? "" : "on"}" data-src="render">渲染</button><button class="btn ${S.panel === "src" ? "on" : ""}" data-src="src">源码</button><span class="meta">渲染在沙箱里进行：不执行脚本、不加载外部图片和样式</span></div>` +
+    (S.panel === "src" ? `<pre class="src">${esc(p.html)}</pre>` : `<iframe class="render" sandbox="" srcdoc="${esc(csp + p.html)}"></iframe>`);
+}
+
+function renderMain() {
+  const p = S.pages[S.cur], all = S.meta.methods, ms = all.filter(m => !S.hidden.has(m));
+  const href = safeHref(p.url);
+  const link = href ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${esc(shortUrl(p.url))}</a>` : esc(p.url);
+  const kc = {}; for (const u of p.structure || []) kc[u.kind] = (kc[u.kind] || 0) + 1;
+  const kcs = Object.entries(kc).map(([k, n]) => `<span class="chip">${esc(KIND[k] || k)} ${n}</span>`).join("");
+  $("main").innerHTML = `
+    <div class="qhead"><h2>${link}</h2><div class="meta">${esc(p.source || "")} · html ${p.html_len ?? "—"} 字 · content ${p.content_len ?? "—"} 字</div></div>
+    <div class="card box"><h3>各方法统计（绿色 = 本页最好，红色 = 本页最差；容器完整 = 完整落在同一块里的容器 / 可统计容器）</h3>${statTable(p, all)}<div class="chips" style="margin-top:6px">${kcs}</div></div>
+    <details class="card box" id="pu"${S.panel === "units" ? " open" : ""}><summary>html 结构单元（${(p.structure || []).length} 个，按原文顺序）</summary>${unitsHtml(p)}</details>
+    <details class="card box" id="ps"${S.panel === "render" || S.panel === "src" ? " open" : ""}><summary>原始 html</summary>${srcHtml(p)}</details>
+    <div class="toolbar">${all.map(m => `<button class="btn ${S.hidden.has(m) ? "" : "on"}" data-m="${esc(m)}">${esc(lab(m))}</button>`).join("")}
+      <button class="btn" id="expand">全部展开 / 收起</button><span class="meta">点方法名显示 / 隐藏该列；悬停某块时，其他列里含相同内容的块一起高亮（蓝框）；点击固定（橙框），再点或按 Esc 取消；红色左边线 = 块尾悬空标题；↑↓ 切换网页</span></div>
+    <div class="cols" style="--n:${Math.max(ms.length, 1)}">${ms.map(m => colHtml(p, m)).join("")}</div>`;
+  applyPin();
+}
+
+function colHtml(p, m) {
+  const d = p.methods[m] || {chunks: []}, s = d.stats || {};
+  const head = `<h3><span>${esc(lab(m))}</span><span class="meta">${s.n ?? 0} 块 · 均长 ${s.avg ?? "—"}</span></h3>`;
+  if (d.error) return `<div class="col">${head}<div class="card box err">${esc(d.error)}</div></div>`;
+  return `<div class="col" data-col="${esc(m)}">${head}${d.chunks.map((c, j) => {
+    const chips = (c.kind ? `<span class="chip k">${esc(KIND[c.kind] || c.kind)}</span>` : "") +
+      (c.len > 512 ? `<span class="chip w">超过 512 字</span>` : "") +
+      (c.dangling ? `<span class="chip b" title="块尾是类标题行，它的正文在下一块">块尾悬空：${esc(c.dangling.slice(0, 20))}</span>` : "");
+    return `<div class="card ck${c.dangling ? " dg" : ""}" data-k="${esc(m)}|${j}"><div class="h"><b>#${j + 1}</b><span>${c.len} 字</span>${chips}</div><div class="t">${esc(c.text)}</div><button class="more">展开</button></div>`;
+  }).join("") || `<div class="meta">没有切出块</div>`}</div>`;
+}
+
+// 内容重叠：在块文本（去空白）上每隔 30 字取一个 10 字片段作为探针，另一块包含任一探针即视为有相同内容
+function info(k) {
+  if (S.cache.has(k)) return S.cache.get(k);
+  const [m, j] = [k.slice(0, k.lastIndexOf("|")), +k.slice(k.lastIndexOf("|") + 1)];
+  const t = (S.pages[S.cur].methods[m]?.chunks[j]?.text || "").replace(/\s+/g, "");
+  const probes = [];
+  for (let i = 0; i + 10 <= t.length && probes.length < 60; i += 30) probes.push(t.slice(i, i + 10));
+  if (!probes.length && t) probes.push(t);
+  const r = {m, t, probes};
+  S.cache.set(k, r);
+  return r;
+}
+function related(k) {
+  const a = info(k), out = [k];
+  for (const el of document.querySelectorAll(".ck[data-k]")) {
+    const k2 = el.dataset.k; if (k2 === k) continue;
+    const b = info(k2); if (b.m === a.m) continue;
+    if (a.probes.some(x => b.t.includes(x)) || b.probes.some(x => a.t.includes(x))) out.push(k2);
+  }
+  return out;
+}
+function mark(cls, keys) {
+  document.querySelectorAll("." + cls).forEach(x => x.classList.remove(cls));
+  for (const k of keys) document.querySelector(`.ck[data-k="${CSS.escape(k)}"]`)?.classList.add(cls);
+}
+function applyPin() { mark("pin", S.pinK ? related(S.pinK) : []); }
+
+$("main").addEventListener("click", e => {
+  const mb = e.target.closest("[data-m]");
+  if (mb) { const m = mb.dataset.m; if (S.hidden.has(m)) S.hidden.delete(m); else if (S.hidden.size < S.meta.methods.length - 1) S.hidden.add(m); renderMain(); return; }
+  const sb = e.target.closest("[data-src]");
+  if (sb) { S.panel = sb.dataset.src; renderMain(); return; }
+  if (e.target.id === "expand") {
+    const ts = document.querySelectorAll(".ck .t"), open = ![...ts].every(t => t.classList.contains("open"));
+    ts.forEach(t => t.classList.toggle("open", open));
+    document.querySelectorAll(".ck .more").forEach(b => b.textContent = open ? "收起" : "展开");
+    return;
+  }
+  if (e.target.classList.contains("more")) { const t = e.target.previousElementSibling; t.classList.toggle("open"); e.target.textContent = t.classList.contains("open") ? "收起" : "展开"; return; }
+  if (e.target.closest("a,button,summary,input,select,iframe,pre")) return;
+  const c = e.target.closest(".ck[data-k]"); if (!c) return;
+  if (String(window.getSelection?.() || "").trim()) return;  // 在选文字复制，不算点击
+  S.pinK = S.pinK === c.dataset.k ? null : c.dataset.k;
+  applyPin();
+});
+$("main").addEventListener("toggle", e => {
+  if (e.target.id === "pu") S.panel = e.target.open ? "units" : (S.panel === "units" ? "" : S.panel);
+  if (e.target.id === "ps") S.panel = e.target.open ? (S.panel === "src" ? "src" : "render") : (S.panel === "render" || S.panel === "src" ? "" : S.panel);
+}, true);
+$("main").addEventListener("mouseover", e => {
+  const c = e.target.closest(".ck[data-k]"); const k = c ? c.dataset.k : null;
+  if (k === S.hoverK) return; S.hoverK = k;
+  mark("same", k ? related(k) : []);
+});
+document.addEventListener("keydown", e => {
+  if (!S.pages.length || /input|select|textarea/i.test(document.activeElement?.tagName || "")) return;
+  if (e.key === "Escape" && S.pinK) { S.pinK = null; applyPin(); return; }
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const p = S.shown.indexOf(S.cur), n = p + (e.key === "ArrowDown" ? 1 : -1);
+  if (n >= 0 && n < S.shown.length) { e.preventDefault(); select(S.shown[n]); }
+});
+
+(async () => {
+  const u = new URLSearchParams(location.search).get("data");
+  if (!u) return;
+  try {
+    $("fmeta").textContent = `读取 ${u} …`;
+    const r = await fetch(u);
+    if (!r.ok) throw new Error(`读取 ${u} 失败：HTTP ${r.status}`);
+    load(await readText(r, u), u.split("/").pop());
+  } catch (e) { showErr(e); }
+})();
+</script>
+</body>
+</html>
