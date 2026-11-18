@@ -241,18 +241,27 @@ def find_record(url, parts=None):
     raise KeyError(f"没找到：{url}")
 
 
-def compare_page(rec, which="html"):
-    """单个网页：吸附前后的块数、块长，标出块尾悬空的类标题行。"""
+def compare_page(rec, which="html", full=False, only_changed=False):
+    """单个网页：吸附前后的块数、块长，标出块尾悬空的类标题行。
+    full=True：打印每块完整内容（保留换行）；默认只打印每块前 30 字的一行摘要。
+    only_changed=True：只打印吸附前后内容不同的块（配合 full=True，长网页时不至于刷屏）。"""
     atoms = parse_html(rec.get("html") or "") if which == "html" else parse_markdown(rec.get("markdown") or "")
     st = Counter()
-    for name, chunks in (("吸附前", chunk_secmerge_t(atoms, SOFT, HARD, TABLE_SOFT)),
-                         ("吸附后", chunk_secmerge_adh(atoms, stats=st))):
+    old = chunk_secmerge_t(atoms, SOFT, HARD, TABLE_SOFT)
+    new = chunk_secmerge_adh(atoms, stats=st)
+    for name, chunks, other in (("吸附前", old, set(new)), ("吸附后", new, set(old))):
         print(f"\n[{which}] {name}：{len(chunks)} 块，悬空类标题行 {dangling(chunks)} 个")
         for j, c in enumerate(chunks):
+            if only_changed and c in other:
+                continue
             tail = c.rsplit("\n", 1)[-1]
             mark = f"  ← 块尾悬空：{tail[:30]!r}" if j < len(chunks) - 1 and title_like(tail) else ""
-            print(f"  {j:3d} {len(c.replace(chr(10), '')):4d}字  {c[:30]!r}{mark}")
-    print("吸附记录：", dict(st))
+            if full:
+                print(f"\n----- 第 {j} 块，{len(c.replace(chr(10), ''))} 字{mark} -----")
+                print(c)
+            else:
+                print(f"  {j:3d} {len(c.replace(chr(10), '')):4d}字  {c[:30]!r}{mark}")
+    print("\n吸附记录：", dict(st))
 
 
 # %% 统计（抽样 2 万个网页，几分钟；想看谷歌网页时传 pattern=DATA_SOURCES[2]["glob"]）
@@ -264,7 +273,9 @@ show_adhere_examples(ADH_EXAMPLES, n=20)
 # %% 单个网页（填 url；知道所在分片时 find_record(URL, parts=[分片路径]) 会快很多）
 URL = "这里填那个网页的 url"
 rec = find_record(URL)
-compare_page(rec, "html")
+compare_page(rec, "html")                                      # 摘要：每块一行
+compare_page(rec, "html", full=True, only_changed=True)        # 完整内容：只看吸附前后有变化的块
+# compare_page(rec, "html", full=True)                         # 完整内容：全部块
 compare_page(rec, "md")
 
 # %% 切分：确认样例没问题后再运行（三批数据都切，按 content_br 对齐文档；已切完的分片自动跳过）
