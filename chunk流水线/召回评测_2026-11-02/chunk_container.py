@@ -13,16 +13,18 @@
 #   B 容器整体 ≤ CT_HARD（1024 字）→ 整块成为一个 chunk，不受 256 限制（接受向量模型截断）。
 #   C 容器 > CT_HARD → 在子结构边界切（列表按项、表格按行且每块重复表头、其他按行），每块贪心装到 CT_SPLIT（512 字）；
 #     单个子结构仍超过 CT_SPLIT 才按句切。
-#   D 只有段落可以合并：段落组内按 256 字贪心装箱（单个段落 ≤ 1024 不拆），同一小节内相邻的小段落块合并到 256 以内；
-#     列表、提示框、表格、代码等容器不与任何其他内容合并（两个相邻的不同列表也不合并）。
+#   D 合并：段落组内按 256 字贪心装箱（单个段落 ≤ 1024 不拆）；同一小节内相邻的块合并到 256 以内，
+#     段落块可以和整块的容器合并，但一块里最多一个容器（容器与容器从不合并，提示框和步骤不会混装）；
+#     超过 CT_HARD 被拆开的容器片段不参与合并。
 #   E 标题吸附：h1–h6、整段加粗的伪标题 → 并到其后内容的第一块；段落组里的编号小标题（规则同 chunk_adhere）
 #     在段落组内切断时挪到下一块，紧挨容器时并到容器开头（如"二、价格表" + 表格）。
 #     不带编号的引导句（"价格如下："）默认不参与（chunk_adhere 里 ADH_LEAD_IN = False）。
 #   F 上下文前缀：暂不加（现网有基于大模型的上下文 chunk）。h1 按普通标题处理，metadata 作为独立容器保留在正文里。
 #   G 极小容器（< MIN_LEN 字，如两条很短的提示）按段落处理，可并入相邻段落 —— 否则单独成块会被 MIN_LEN 过滤掉。
 #   H 排版用的表格（没有表头、每行最多 1 个非空单元格，论坛帖子 / 评论常见）不算表格容器，每行按段落处理。
-#   I 表格前文：表格能整块保留（≤ CT_HARD）时，同一小节里紧挨在表格前的一个完整段落（≤ CT_TABLE_LEAD_MAX 字）
-#     挪到表格块开头（挪动，不复制），作为表格的说明；加上它会超过 CT_HARD 就不带；表格要拆分时也不带。
+#   I 容器前文：表格 / 列表 / 代码（CT_LEAD_KINDS；提示框不带）能整块保留（≤ CT_HARD）时，同一小节里紧挨在它前面的
+#     一个完整段落（≤ CT_LEAD_MAX 字）挪到容器块开头（挪动，不复制），作为说明；加上它会超过 CT_HARD 就不带；
+#     容器要拆分时也不带。
 # 最后过滤 < MIN_LEN 字的块（与其他方法一致）。
 #
 # 新方法：html_container
@@ -45,8 +47,9 @@ CT_HARD = 1024        # 容器整块保留的上限（字）
 CT_SPLIT = 512        # 超大容器拆开后每块的目标长度（字）
 CT_TINY = MIN_LEN     # 不足这么多字的容器按段落处理（否则单独成块会被 MIN_LEN 过滤掉，内容丢失）
 CT_HEAD_MAX = 100     # 超过这么多字的 h1–h6 不当标题（多为标签没闭合好吞进了正文），按段落处理
-CT_TABLE_LEAD = True  # 表格能整块保留时，把紧挨在前面的一个描述段落挪到表格开头（表格要拆分时不带）
-CT_TABLE_LEAD_MAX = 256  # 描述段落最长多少字才带（更长的多半是普通正文，不是表格说明）
+CT_LEAD = True        # 容器能整块保留时，把紧挨在前面的一个描述段落挪到容器开头（容器要拆分时不带）
+CT_LEAD_MAX = 256     # 描述段落最长多少字才带（更长的多半是普通正文，不是容器的说明）
+CT_LEAD_KINDS = ("table", "list", "code")  # 哪些容器带前文；提示框不带（前面的段落多半是普通正文，不是它的说明）
 NOTE_CLASSES = {"note"}          # 视为"提示框"容器的 div class
 META_CLASSES = {"metadata"}      # 视为"元信息"容器的 div class
 CONTAINER_KINDS = ("list", "table", "note", "metadata", "quote", "code", "figure")
@@ -211,7 +214,7 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
     def flush_run():
         nonlocal run, run_tl, run_desc
         if run:
-            recs.append(["\n".join(run), rp["parent"], rp["head"], "para"])
+            recs.append(["\n".join(run), rp["parent"], rp["head"], "para", True])
         run, run_tl, run_desc = [], [], []
 
     def trailing_k():
@@ -277,16 +280,16 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
         lead, inherit = [], None
         k = trailing_k()
         body_len = len("\n".join(([u.caption] if u.caption else []) + ([u.header] if u.header else []) + u.items))
-        # 表格前的描述段：表格能整块保留（≤ hard）时，把紧挨着的一个完整段落（≤ CT_TABLE_LEAD_MAX 字）一起挪到表格开头；
-        # 表格要拆分时不带。类标题行（编号标题）照常一起挪。
-        if CT_TABLE_LEAD and u.kind == "table" and body_len <= hard:
+        # 容器前的描述段：容器能整块保留（≤ hard）时，把紧挨着的一个完整段落（≤ CT_LEAD_MAX 字）一起挪到容器开头；
+        # 容器要拆分时不带。类标题行（编号标题）照常一起挪。
+        if CT_LEAD and u.kind in CT_LEAD_KINDS and body_len <= hard:
             j = len(run) - k - 1
-            if j >= 0 and run_desc[j] is not None and run_desc[j] <= CT_TABLE_LEAD_MAX and not run_tl[j]:
+            if j >= 0 and run_desc[j] is not None and run_desc[j] <= CT_LEAD_MAX and not run_tl[j]:
                 if tail_fits(k + 1, body_len):
                     lead, inherit = take_tail(k + 1, body_len)
-                    st["表格前文：描述段并入表格"] += 1
+                    st[f"前文：描述段并入{u.kind}"] += 1
                 else:
-                    st["表格前文：并入后超过上限，不带"] += 1
+                    st["前文：并入后超过上限，不带"] += 1
         if not lead and k:
             extra = body_len if body_len <= hard else len(u.header) + len(u.caption) + 2 + (len(u.items[0]) if u.items else 0)
             lead, inherit = take_tail(k, extra)
@@ -300,7 +303,7 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
         rep = [u.header] if u.kind == "table" and u.header else []
         whole = "\n".join(first + rep + u.items)
         if len(whole) <= hard:
-            recs.append([whole, parent, head, u.kind])
+            recs.append([whole, parent, head, u.kind, True])
             st[f"{u.kind}：整块"] += 1
             return
         st[f"{u.kind}：超过 {hard} 字，按子结构拆"] += 1
@@ -310,13 +313,13 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
         cur, has, n_out = first + rep, False, 0
         for p in pieces:
             if has and sum(len(x) for x in cur) + len(cur) + len(p) > split_to:
-                recs.append(["\n".join(cur), parent, head and n_out == 0, u.kind])
+                recs.append(["\n".join(cur), parent, head and n_out == 0, u.kind, False])  # 拆开的容器片段不参与合并
                 n_out += 1
                 cur, has = list(rep), False
             cur.append(p)
             has = True
         if has or n_out == 0:
-            recs.append(["\n".join(cur), parent, head and n_out == 0, u.kind])
+            recs.append(["\n".join(cur), parent, head and n_out == 0, u.kind, n_out == 0])
 
     for i, u in enumerate(units):
         if u.kind == "heading":
@@ -341,18 +344,23 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
     flush_run()
     if pending:  # 页面以标题结尾
         pre, parent, _ = take_pending()
-        recs.append(["\n".join(pre), parent, True, "para"])
+        recs.append(["\n".join(pre), parent, True, "para", True])
 
-    # 只有段落块之间合并：同一小节范围内、合并后不超过 soft
+    # 相邻块合并：同一小节范围内、合并后不超过 soft；段落块可以和整块的容器合并，但一块里最多一个容器
+    # （容器与容器之间从不合并，避免提示框和步骤混装）；拆开的容器片段不参与合并
     out = []
-    for text, parent, head, kind in recs:
+    for text, parent, head, kind, mergeable in recs:
         if out:
             g = out[-1]
-            if (kind == "para" and g["kind"] == "para" and parent[: len(g["scope"])] == g["scope"]
-                    and len(g["text"]) + 1 + len(text) <= soft):
+            if (mergeable and g["mergeable"] and not (g["has_cont"] and kind != "para")
+                    and parent[: len(g["scope"])] == g["scope"] and len(g["text"]) + 1 + len(text) <= soft):
                 g["text"] += "\n" + text
+                if kind != "para":
+                    g["has_cont"], g["kind"] = True, kind
+                st["合并：段落块与容器块合并" if (g["has_cont"]) else "合并：段落块合并"] += 1
                 continue
-        out.append({"text": text, "scope": parent if head else parent[:-1], "kind": kind})
+        out.append({"text": text, "scope": parent if head else parent[:-1], "kind": kind,
+                    "has_cont": kind != "para", "mergeable": mergeable})
     return out
 
 
