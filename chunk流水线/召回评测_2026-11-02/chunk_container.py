@@ -20,6 +20,9 @@
 #     不带编号的引导句（"价格如下："）默认不参与（chunk_adhere 里 ADH_LEAD_IN = False）。
 #   F 上下文前缀：暂不加（现网有基于大模型的上下文 chunk）。h1 按普通标题处理，metadata 作为独立容器保留在正文里。
 #   G 极小容器（< MIN_LEN 字，如两条很短的提示）按段落处理，可并入相邻段落 —— 否则单独成块会被 MIN_LEN 过滤掉。
+#   H 排版用的表格（没有表头、每行最多 1 个非空单元格，论坛帖子 / 评论常见）不算表格容器，每行按段落处理。
+#   I 表格前文：表格能整块保留（≤ CT_HARD）时，同一小节里紧挨在表格前的一个完整段落（≤ CT_TABLE_LEAD_MAX 字）
+#     挪到表格块开头（挪动，不复制），作为表格的说明；加上它会超过 CT_HARD 就不带；表格要拆分时也不带。
 # 最后过滤 < MIN_LEN 字的块（与其他方法一致）。
 #
 # 新方法：html_container
@@ -42,6 +45,8 @@ CT_HARD = 1024        # 容器整块保留的上限（字）
 CT_SPLIT = 512        # 超大容器拆开后每块的目标长度（字）
 CT_TINY = MIN_LEN     # 不足这么多字的容器按段落处理（否则单独成块会被 MIN_LEN 过滤掉，内容丢失）
 CT_HEAD_MAX = 100     # 超过这么多字的 h1–h6 不当标题（多为标签没闭合好吞进了正文），按段落处理
+CT_TABLE_LEAD = True  # 表格能整块保留时，把紧挨在前面的一个描述段落挪到表格开头（表格要拆分时不带）
+CT_TABLE_LEAD_MAX = 256  # 描述段落最长多少字才带（更长的多半是普通正文，不是表格说明）
 NOTE_CLASSES = {"note"}          # 视为"提示框"容器的 div class
 META_CLASSES = {"metadata"}      # 视为"元信息"容器的 div class
 CONTAINER_KINDS = ("list", "table", "note", "metadata", "quote", "code", "figure")
@@ -79,6 +84,20 @@ def block_text(el):
 
     rec(el)
     return clean_inline("\n".join("".join(x) for x in lines))
+
+
+def is_layout_table(table, header):
+    """排版用的表格：没有表头，且每一行最多 1 个非空单元格（论坛把整条帖子 / 评论放在一个单元格里）。
+    这种表格不是数据表，按段落处理，才能和前后的段落合并；≥ 2 列或带表头的才算真正的表格容器。"""
+    if header:
+        return False
+    for tr in table.find_all("tr"):
+        if tr.find_parent("table") is not table:
+            continue
+        cells = [td for td in tr.find_all(["td", "th"], recursive=False) if clean_inline(td.get_text()).strip()]
+        if len(cells) > 1:
+            return False
+    return True
 
 
 def parse_html_blocks(html):
@@ -130,7 +149,13 @@ def parse_html_blocks(html):
             rows, header = table_rows_from_soup(c)
             cap = c.find("caption")
             cap = clean_inline(cap.get_text()).replace("\n", " ") if cap else ""
-            if rows or header:
+            if is_layout_table(c, header):  # 排版用的单列表格（论坛帖子、评论常见）：每行按段落处理
+                for tr in c.find_all("tr"):
+                    if tr.find_parent("table") is c:
+                        t = block_text(tr)
+                        if t:
+                            units.append(Unit("para", [t]))
+            elif rows or header:
                 units.append(Unit("table", rows, header=header, caption=cap))
         elif name == "pre":
             flush()
@@ -172,6 +197,7 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
     recs = []                      # [文本, 上级标题路径, 是否以标题开头, kind]
     path, pending = [], []         # 标题栈 [(level, 序号)]；待吸附的标题 [(序号, 文本)]
     run, run_tl = [], []           # 段落组当前块的各段，及每段的类标题信息
+    run_desc = []                  # 每段若是完整段落则记其字数（可作为表格前的描述段），否则 None
     rp = {"parent": (), "head": False}
 
     def take_pending():
@@ -183,10 +209,10 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
         return pre, parent, head
 
     def flush_run():
-        nonlocal run, run_tl
+        nonlocal run, run_tl, run_desc
         if run:
             recs.append(["\n".join(run), rp["parent"], rp["head"], "para"])
-        run, run_tl = [], []
+        run, run_tl, run_desc = [], [], []
 
     def trailing_k():
         """段落块末尾可挪走的类标题行数（规则同 chunk_adhere：≤ ADH_MAX_LINES 行，同一编号样式不能出现两次）。"""
@@ -204,23 +230,29 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
             return 0
         return k
 
+    def tail_fits(k, extra):
+        """取走段落块末尾 k 段（剩下不足 MIN_LEN 时整块）后，与对方块其余 extra 字合起来是否不超过 hard。"""
+        whole = sum(len(x) for x in run[:-k]) < MIN_LEN
+        moved = run if whole else run[-k:]
+        return sum(len(x) + 1 for x in moved) + extra <= hard
+
     def take_tail(k, extra):
         """从段落块末尾取走 k 行（剩下不足 MIN_LEN 时整块取走）；extra = 并入后对方块的其余长度，超过 hard 则不取。"""
-        nonlocal run, run_tl
-        whole = sum(len(x) for x in run[:-k]) < MIN_LEN
-        moved = run[:] if whole else run[-k:]
-        if sum(len(x) + 1 for x in moved) + extra > hard:
+        nonlocal run, run_tl, run_desc
+        if not tail_fits(k, extra):
             st["跳过：并入后超过硬上限"] += 1
             return [], None
+        whole = sum(len(x) for x in run[:-k]) < MIN_LEN
+        moved = run[:] if whole else run[-k:]
         inherit = (rp["parent"], rp["head"]) if whole else None
         if whole:
-            run, run_tl = [], []
+            run, run_tl, run_desc = [], [], []
         else:
-            run, run_tl = run[:-k], run_tl[:-k]
+            run, run_tl, run_desc = run[:-k], run_tl[:-k], run_desc[:-k]
         return moved, inherit
 
-    def add_para_piece(piece, tl):
-        nonlocal run, run_tl
+    def add_para_piece(piece, tl, desc=None):
+        nonlocal run, run_tl, run_desc
         carry, inherit = [], None
         if run and sum(len(x) for x in run) + len(run) + len(piece) > soft:
             k = trailing_k()
@@ -239,12 +271,25 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
         else:
             run.append(piece)
         run_tl.append(tl)
+        run_desc.append(desc)
 
     def emit_container(u):
         lead, inherit = [], None
         k = trailing_k()
-        if k:
-            lead, inherit = take_tail(k, len(u.header) + len(u.caption) + 2 + (len(u.items[0]) if u.items else 0))
+        body_len = len("\n".join(([u.caption] if u.caption else []) + ([u.header] if u.header else []) + u.items))
+        # 表格前的描述段：表格能整块保留（≤ hard）时，把紧挨着的一个完整段落（≤ CT_TABLE_LEAD_MAX 字）一起挪到表格开头；
+        # 表格要拆分时不带。类标题行（编号标题）照常一起挪。
+        if CT_TABLE_LEAD and u.kind == "table" and body_len <= hard:
+            j = len(run) - k - 1
+            if j >= 0 and run_desc[j] is not None and run_desc[j] <= CT_TABLE_LEAD_MAX and not run_tl[j]:
+                if tail_fits(k + 1, body_len):
+                    lead, inherit = take_tail(k + 1, body_len)
+                    st["表格前文：描述段并入表格"] += 1
+                else:
+                    st["表格前文：并入后超过上限，不带"] += 1
+        if not lead and k:
+            extra = body_len if body_len <= hard else len(u.header) + len(u.caption) + 2 + (len(u.items[0]) if u.items else 0)
+            lead, inherit = take_tail(k, extra)
             if lead:
                 st["引导绑定：类标题行并入容器开头"] += 1
         flush_run()
@@ -283,7 +328,7 @@ def chunk_container_recs(units, soft=SOFT, hard=CT_HARD, split_to=CT_SPLIT, stat
         elif u.kind == "para":
             t = u.items[0]
             if len(t) <= hard:
-                add_para_piece(t, _tl_info(t))
+                add_para_piece(t, _tl_info(t), len(t))
             else:
                 for p in split_long(t, split_to):
                     add_para_piece(p, None)
