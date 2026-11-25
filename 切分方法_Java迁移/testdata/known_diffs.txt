@@ -1,0 +1,3 @@
+# 已知差异：Python（lxml / libxml2）与 Java（jsoup）修复残缺 html 的方式不同，原因见《Python与Java差异对照.md》第 3 节。
+# 每行一个标准答案里的页面 id；这些页面不一致时单独计数，不算测试失败。
+fuzz_html:51   # 没闭合的 <p> 后面紧跟 <article>：libxml2 不认识 HTML5 标签，把整节放进 p 里；jsoup 先关闭 p
