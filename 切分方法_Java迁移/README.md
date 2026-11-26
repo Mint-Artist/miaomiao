@@ -17,6 +17,7 @@
 ├── README.md                     本文件
 ├── 切分方法说明.md                 实现规格：通用约定、解析规则、5 种方法的算法、参数、边界情况、示例
 ├── Python与Java差异对照.md          语言 / 库差异及处理方式；无法消除的已知差异；对照结果
+├── 生产接入_codeagent指南.md        给内网 code agent 的接入步骤、禁改清单、验收标准、任务提示词
 ├── python/
 │   ├── original/                  notebook 原版（recall_pipeline_v2.py、chunk_adhere.py、chunk_container.py），只作溯源
 │   ├── chunk_ref/                 独立参考实现（由 build_ref.py 从原版逐字抽取，不依赖 notebook）
