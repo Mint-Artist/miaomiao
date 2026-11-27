@@ -24,7 +24,8 @@
 │   ├── build_ref.py               重新生成 chunk_ref
 │   ├── check_ref_vs_original.py   验证 chunk_ref 与原版逐字一致
 │   ├── fuzz_pages.py              随机测试页生成器（固定种子）
-│   └── make_golden.py             生成标准答案（golden），供 Java 对照
+│   ├── make_golden.py             生成标准答案（golden），供 Java 对照
+│   └── sample_real.py             服务器上抽样真实网页（原始数据 + 切分结果），输出同 golden 格式
 ├── java/                          Maven 工程（Java 8，唯一运行时依赖 jsoup 1.21.2）
 │   ├── pom.xml
 │   └── src/main/java/com/chunk/structure/   实现
@@ -102,6 +103,9 @@ cd python
 pip install beautifulsoup4 lxml          # 若环境里还没有
 # 输入：jsonl / jsonl.gz，每行至少有 markdown、html 字段（url 可选），例如离线评测用的原始分片
 python make_golden.py --input /path/to/part-00000.jsonl.gz --limit 5000 --out golden_real.jsonl.gz
+# 或者：从三批数据里随机抽约 1 万页，同时带上离线评测落盘的切分结果并核对（推荐，用法见 sample_real.py 开头）
+python sample_real.py --source "=/path/to/random/part-*" --source "inj-=/path/to/inj/part-*" \
+  --source "ggl-=/path/to/google_pages_parts/part-*" --out-root /path/to/output/chunk_eval --n 10000 --out golden_real.jsonl.gz
 
 cd ../java
 mvn test -Dgolden.path=../python/golden_real.jsonl.gz -Dgolden.known=none
