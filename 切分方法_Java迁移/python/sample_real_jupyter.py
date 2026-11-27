@@ -2,6 +2,9 @@
 # # 抽样真实网页（Jupyter 版）
 #
 # 与 sample_real.py 功能相同，只是不用命令行参数：在第 1 段改配置，然后依次运行各段。
+# 推荐用法：在同一个 notebook 里先运行 recall_pipeline_v2.py 第 1 段（配置），再把本文件各段贴进去运行。
+# 本文件第 1 段会直接沿用那里的 DATA_SOURCES、OUT_ROOT，只需要改 PKG_DIR 和 SAMPLE_OUT；
+# 本文件的变量都带 SAMPLE_ 前缀，不会覆盖 recall_pipeline_v2 的变量（比如 N_PROC）。
 # 每页导出：原始数据（url、content、markdown、html）、5 种方法的现场切分结果 expected、
 # html_container 的块类型 container_kinds、离线评测时落盘的切分结果 offline（含 content_br）。
 # 输出格式与 make_golden.py 相同，可以直接给 Java 的 GoldenRunner / mvn test 用。
@@ -14,21 +17,26 @@
 # 本迁移包 python/ 目录的路径（里面有 chunk_ref/、make_golden.py、sample_real.py）
 PKG_DIR = "/path/to/切分方法_Java迁移/python"
 
-# 三批数据：前缀、路径必须与离线评测 recall_pipeline_v2.py 第 1 段 DATA_SOURCES 一致
-DATA_SOURCES = [
-    {"name": "随机网页库",                 "glob": "/path/to/random/part-*",              "prefix": ""},
-    {"name": "自己引擎的精排与向量召回网页", "glob": "/path/to/inj/part-*",                 "prefix": "inj-"},
-    {"name": "谷歌精排网页",               "glob": "/path/to/google_pages_parts/part-*", "prefix": "ggl-"},
-]
+# DATA_SOURCES、OUT_ROOT：如果已经在同一个 notebook 里运行过 recall_pipeline_v2.py 第 1 段，直接沿用那里的值；
+# 否则用下面写的值（前缀、路径必须与离线评测 DATA_SOURCES 一致）
+if "DATA_SOURCES" not in globals():
+    DATA_SOURCES = [
+        {"name": "随机网页库",                 "glob": "/path/to/random/part-*",              "prefix": ""},
+        {"name": "自己引擎的精排与向量召回网页", "glob": "/path/to/inj/part-*",                 "prefix": "inj-"},
+        {"name": "谷歌精排网页",               "glob": "/path/to/google_pages_parts/part-*", "prefix": "ggl-"},
+    ]
+if "OUT_ROOT" not in globals():
+    OUT_ROOT = "/path/to/output/chunk_eval"   # 离线评测的 OUT_ROOT；设为 None 则不导出 offline、不核对
 
-# 离线评测的 OUT_ROOT：用来读取已落盘的切分结果并核对；设为 None 则不导出 offline、不核对
-OUT_ROOT = "/path/to/output/chunk_eval"
+# 以下变量名都带 SAMPLE_ 前缀，不会覆盖 recall_pipeline_v2 的同名变量
+SAMPLE_N = 10000          # 目标页数（各批平分）
+SAMPLE_PER_PART = 200     # 每个分片最多抽几页；越小覆盖的分片越多、读得越久
+SAMPLE_SEED = 20261127    # 固定种子，重跑结果相同
+SAMPLE_PROC = 16          # 切分用的进程数
+SAMPLE_OUT = "/path/to/golden_real.jsonl.gz"   # 输出文件（.gz 结尾则压缩）
 
-N_PAGES = 10000      # 目标页数（各批平分）
-PER_PART = 200       # 每个分片最多抽几页；越小覆盖的分片越多、读得越久
-SEED = 20261127      # 固定种子，重跑结果相同
-N_PROC = 16          # 切分用的进程数
-OUT_PATH = "/path/to/golden_real.jsonl.gz"   # 输出文件（.gz 结尾则压缩）
+print("数据：", [(s["name"], s["prefix"], s["glob"]) for s in DATA_SOURCES])
+print("离线结果：", OUT_ROOT, "  输出：", SAMPLE_OUT)
 
 # %% 2. 定义：抽样主流程（复用 sample_real.py 里的函数）
 import gzip
@@ -51,11 +59,11 @@ def run_sample(sources=None, out_root=None, n=None, per_part=None, seed=None, n_
     """按配置抽样并写出 jsonl；返回汇总（每批页数、出错页、现场切分与离线结果的核对）。参数不给则用第 1 段的配置。"""
     sources = sources if sources is not None else DATA_SOURCES
     out_root = out_root if out_root is not None else OUT_ROOT
-    n = n or N_PAGES
-    per_part = per_part or PER_PART
-    seed = seed if seed is not None else SEED
-    n_proc = n_proc or N_PROC
-    out_path = out_path or OUT_PATH
+    n = n or SAMPLE_N
+    per_part = per_part or SAMPLE_PER_PART
+    seed = seed if seed is not None else SAMPLE_SEED
+    n_proc = n_proc or SAMPLE_PROC
+    out_path = out_path or SAMPLE_OUT
 
     srcs = []
     for s in sources:
@@ -163,7 +171,7 @@ def run_sample(sources=None, out_root=None, n=None, per_part=None, seed=None, n_
 
 def show_diff(page_id, method, path=None, width=200):
     """查看某页某方法的现场切分结果与离线结果的差别（第一个不同的块起，各打印几块）。"""
-    path = path or OUT_PATH
+    path = path or SAMPLE_OUT
     opener = gzip.open if path.endswith(".gz") else open
     with opener(path, "rt", encoding="utf-8") as f:
         for line in f:
