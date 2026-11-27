@@ -25,7 +25,8 @@
 │   ├── check_ref_vs_original.py   验证 chunk_ref 与原版逐字一致
 │   ├── fuzz_pages.py              随机测试页生成器（固定种子）
 │   ├── make_golden.py             生成标准答案（golden），供 Java 对照
-│   └── sample_real.py             服务器上抽样真实网页（原始数据 + 切分结果），输出同 golden 格式
+│   ├── sample_real.py             服务器上抽样真实网页（原始数据 + 切分结果），输出同 golden 格式（命令行版）
+│   └── sample_real_jupyter.py     同上，Jupyter 版：第 1 段改配置，按段运行
 ├── java/                          Maven 工程（Java 8，唯一运行时依赖 jsoup 1.21.2）
 │   ├── pom.xml
 │   └── src/main/java/com/chunk/structure/   实现
