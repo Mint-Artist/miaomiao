@@ -17,4 +17,5 @@
 | 轮次 | 任务书（Gemini） | 回传总结（codeagent） | 状态 |
 | --- | --- | --- | --- |
 | 01 | `gemini_01_标注口径核查与300对复测.md` | `codeagent_01_标注口径核查与300对复测.md` | 已回传 |
-| 02 | `gemini_02_败例核查与v2.1列表页修订.md` | `codeagent_02_败例核查与v2.1列表页修订.md`（待回传） | 已发布 |
+| 02 | `gemini_02_败例核查与v2.1列表页修订.md` | `codeagent_02.md` | 已回传 |
+| 03 | `gemini_03_盲审校准与hydrogen定稿验收.md` | `codeagent_03_盲审校准与hydrogen定稿验收.md`（待回传） | 已发布 |
